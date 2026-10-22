@@ -1,10 +1,15 @@
-// Figura anatómica estilizada y visor 3D. Cada grupo muscular es una malla con
-// `userData.musculo`; resaltar un ejercicio solo cambia el material de esas mallas.
-// Pensado para reemplazarse más adelante por un modelo real (Z-Anatomy) con los mismos IDs.
+// Visor anatómico. Carga el modelo real de Z-Anatomy (assets/modelos/anatomia.glb, generado con
+// herramientas/convertir-anatomia.mjs): una malla por grupo muscular con `extras.musculo`, más
+// `musculo_otros` (no resaltable) y `piel` (contorno holográfico). Resaltar un ejercicio solo cambia
+// el material de esas mallas. Si el GLB no carga, se usa la figura estilizada con los mismos IDs.
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import * as T from "./texturas.js";
+
+const MODELO = "assets/modelos/anatomia.glb";
 
 export const NOMBRES_MUSCULOS = {
     pectorales: "Pectorales",
@@ -39,9 +44,7 @@ function capsula(rA, rB, largo) {
     return new THREE.LatheGeometry(pts, 32);
 }
 
-function crearFigura() {
-    const figura = new THREE.Group();
-    const musculos = [];
+function crearMateriales() {
     const fibras = T.fibras();
     // El cuerpo es un contorno holográfico (fresnel + líneas de escaneo); los músculos van sólidos dentro.
     const holograma = new THREE.ShaderMaterial({
@@ -76,12 +79,46 @@ function crearFigura() {
         depthWrite: false,
         blending: THREE.AdditiveBlending
     });
-    const mat = {
+    return {
         base: holograma,
-        reposo: new THREE.MeshPhysicalMaterial({ color: 0x3c2326, roughness: .45, clearcoat: .6, clearcoatRoughness: .3, bumpMap: fibras, bumpScale: 1.4, sheen: .6, sheenColor: 0x88444a }),
+        reposo: new THREE.MeshPhysicalMaterial({ color: 0x5a2c30, roughness: .45, clearcoat: .6, clearcoatRoughness: .3, bumpMap: fibras, bumpScale: 1.4, sheen: .6, sheenColor: 0x88444a }),
+        otros: new THREE.MeshPhysicalMaterial({ color: 0x3a2224, roughness: .55, clearcoat: .35, clearcoatRoughness: .4, sheen: .4, sheenColor: 0x66343a }),
         principal: new THREE.MeshPhysicalMaterial({ color: 0xff2a33, emissive: 0xff1420, emissiveIntensity: .8, roughness: .32, clearcoat: 1, bumpMap: fibras, bumpScale: 1.4 }),
         secundario: new THREE.MeshPhysicalMaterial({ color: 0xff8a3d, emissive: 0xff5a10, emissiveIntensity: .3, roughness: .36, clearcoat: 1, bumpMap: fibras, bumpScale: 1.4 })
     };
+}
+
+// Modelo real: cada nodo `musculo_<id>` ya viene fusionado por grupo y en metros (pies en y = 0).
+async function cargarModelo(mat) {
+    const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+    const gltf = await loader.loadAsync(MODELO);
+    const figura = gltf.scene;
+    const musculos = [];
+    figura.traverse((o) => {
+        if (!o.isMesh) return;
+        const id = o.userData.musculo;
+        if (o.name === "piel") {
+            // La piel real cubre todo el cuerpo: un contorno más tenue deja ver los músculos.
+            o.material = mat.base.clone();
+            o.material.uniforms = { uColor: { value: new THREE.Color(0x7a1c22) }, uTiempo: mat.base.uniforms.uTiempo };
+            o.renderOrder = 2;
+            return;
+        }
+        o.castShadow = true;
+        if (id) {
+            o.material = mat.reposo;
+            musculos.push(o);
+        } else {
+            o.material = mat.otros;
+        }
+    });
+    return { figura, musculos };
+}
+
+// Figura estilizada de respaldo (sin conexión al GLB).
+function crearFigura(mat) {
+    const figura = new THREE.Group();
+    const musculos = [];
     const esfera = new THREE.SphereGeometry(1, 40, 28);
 
     const parte = (geo, x = 0, y = 0, z = 0) => {
@@ -158,7 +195,7 @@ function crearFigura() {
     musculo("trapecio", v(0, 1.465, -.05), [.13, .07, .035], { rot: [.35, 0, 0] });
     musculo("trapecio", v(0, 1.33, -.092), [.06, .12, .022]);
 
-    return { figura, musculos, mat };
+    return { figura, musculos };
 }
 
 export class VisorAnatomico {
@@ -176,13 +213,22 @@ export class VisorAnatomico {
         this.escena.environmentIntensity = .45;
 
         this.camara = new THREE.PerspectiveCamera(30, 1, .1, 50);
-        this.camara.position.set(0, 1.05, 3.6);
+        this.camara.position.set(0, 1.05, 3.1);
 
-        const { figura, musculos, mat } = crearFigura();
-        this.figura = figura;
-        this.musculos = musculos;
-        this.mat = mat;
-        this.escena.add(figura);
+        this.mat = crearMateriales();
+        this.musculos = [];
+        this.seleccion = { principales: [], secundarios: [] };
+        this.listo = cargarModelo(this.mat)
+            .catch((error) => {
+                console.warn("Modelo anatómico no disponible; se usa la figura estilizada", error);
+                return crearFigura(this.mat);
+            })
+            .then(({ figura, musculos }) => {
+                this.figura = figura;
+                this.musculos = musculos;
+                this.escena.add(figura);
+                this.pintar();
+            });
 
         const clave = new THREE.DirectionalLight(0xffffff, 2.2);
         clave.position.set(1.5, 3, 2.5);
@@ -213,8 +259,8 @@ export class VisorAnatomico {
         this.controles.target.set(0, .88, 0);
         this.controles.enablePan = false;
         this.controles.enableDamping = true;
-        this.controles.minDistance = 2;
-        this.controles.maxDistance = 5.2;
+        this.controles.minDistance = 1.3;
+        this.controles.maxDistance = 4.6;
         this.controles.minPolarAngle = .5;
         this.controles.maxPolarAngle = 1.75;
         this.controles.autoRotate = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -234,14 +280,20 @@ export class VisorAnatomico {
         this.camara.updateProjectionMatrix();
     }
 
-    mostrar({ principales = [], secundarios = [] }) {
-        const p = new Set(principales), s = new Set(secundarios);
+    // El modelo puede llegar después de abrir la ficha: se repinta con la última selección.
+    pintar() {
+        const p = new Set(this.seleccion.principales), s = new Set(this.seleccion.secundarios);
         for (const m of this.musculos) {
             const id = m.userData.musculo;
             m.material = p.has(id) ? this.mat.principal : s.has(id) ? this.mat.secundario : this.mat.reposo;
         }
+    }
+
+    mostrar({ principales = [], secundarios = [] }) {
+        this.seleccion = { principales, secundarios };
+        this.pintar();
         const espalda = principales.filter((id) => DE_ESPALDA.has(id)).length > principales.length / 2;
-        this.camara.position.set(espalda ? -1 : 1, 1.2, espalda ? -3.9 : 3.9);
+        this.camara.position.set(espalda ? -.8 : .8, 1.15, espalda ? -3.1 : 3.1);
         this.controles.autoRotate = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
         this.controles.update();
     }
