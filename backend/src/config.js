@@ -27,4 +27,6 @@ export const config = {
   database: process.env.MONGODB_DB?.trim() || 'GymWeb',
   host: process.env.HOST || '127.0.0.1',
   port,
+  // Detrás del proxy HTTPS del hosting (Render): número de saltos de proxy en los que confiar.
+  trustProxy: Number(process.env.TRUST_PROXY || 0),
 };

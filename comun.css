@@ -1,0 +1,183 @@
+/* Componentes compartidos por todas las páginas: enlace de salto, botones, avisos y menú móvil. */
+.saltar {
+    position: absolute;
+    left: 12px;
+    top: -60px;
+    z-index: 100;
+    padding: 10px 16px;
+    border-radius: 8px;
+    background: var(--red);
+    color: #fff;
+    font-weight: 750;
+}
+
+.saltar:focus {
+    top: 12px;
+}
+
+.boton,
+.boton-fantasma {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 11px 20px;
+    border: 1px solid var(--red);
+    border-radius: 8px;
+    font: inherit;
+    font-weight: 750;
+    cursor: pointer;
+    transition: transform .2s ease, filter .2s ease, background .2s ease;
+}
+
+.boton {
+    background: linear-gradient(135deg, var(--red-bright), var(--red-dark));
+    color: #fff;
+}
+
+.boton-fantasma {
+    background: transparent;
+    color: var(--text);
+    border-color: rgba(255, 255, 255, .22);
+}
+
+.boton:hover:not(:disabled) {
+    transform: translateY(-1px);
+    filter: brightness(1.1);
+}
+
+.boton-fantasma:hover:not(:disabled) {
+    border-color: var(--red);
+    background: rgba(237, 28, 36, .1);
+}
+
+.boton:disabled,
+.boton-fantasma:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+}
+
+.aviso:empty {
+    display: none;
+}
+
+.aviso {
+    margin: 14px 0 0;
+    padding: 10px 14px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--surface-raised);
+    font-size: .92rem;
+}
+
+.aviso[data-tipo="exito"] {
+    border-color: rgba(52, 199, 120, .45);
+    background: rgba(52, 199, 120, .08);
+    color: #9ff0c3;
+}
+
+.aviso[data-tipo="error"] {
+    border-color: rgba(237, 28, 36, .4);
+    background: rgba(237, 28, 36, .08);
+    color: #ff9a9d;
+}
+
+.aviso a {
+    color: var(--red-bright);
+    font-weight: 750;
+    text-decoration: underline;
+}
+
+/* Acciones añadidas a tarjetas de la portada (entrenadores, planes). */
+.accion-tarjeta {
+    display: inline-flex;
+    margin-top: 14px;
+    padding: 9px 16px;
+    border: 1px solid rgba(237, 28, 36, .6);
+    border-radius: 999px;
+    color: #fff;
+    font-size: .88rem;
+    font-weight: 750;
+    transition: background .2s ease;
+}
+
+.accion-tarjeta:hover,
+.accion-tarjeta:focus-visible {
+    background: var(--red);
+}
+
+/* Menú compacto en pantallas pequeñas */
+.menu-movil {
+    display: none;
+}
+
+@media (max-width: 900px) {
+    header {
+        flex-direction: row !important;
+        flex-wrap: wrap;
+        justify-content: space-between !important;
+    }
+
+    .menu-movil {
+        display: inline-flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 5px;
+        width: 44px;
+        height: 44px;
+        padding: 0 11px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--surface);
+        cursor: pointer;
+    }
+
+    .menu-movil span {
+        height: 2px;
+        border-radius: 2px;
+        background: var(--text);
+        transition: transform .25s ease, opacity .2s ease;
+    }
+
+    .menu-movil[aria-expanded="true"] span:nth-child(1) {
+        transform: translateY(7px) rotate(45deg);
+    }
+
+    .menu-movil[aria-expanded="true"] span:nth-child(2) {
+        opacity: 0;
+    }
+
+    .menu-movil[aria-expanded="true"] span:nth-child(3) {
+        transform: translateY(-7px) rotate(-45deg);
+    }
+
+    header nav {
+        display: none !important;
+        flex-direction: column;
+        align-items: stretch !important;
+        gap: 4px !important;
+        width: 100%;
+        padding-top: 8px;
+    }
+
+    header nav.nav-abierta {
+        display: flex !important;
+    }
+
+    header nav a {
+        padding: 12px 6px;
+        font-size: 1rem !important;
+        border-bottom: 1px solid var(--line);
+    }
+
+    header nav a:last-child {
+        margin-top: 8px;
+        padding: 12px !important;
+        text-align: center;
+    }
+
+    header nav a::after {
+        display: none;
+    }
+}

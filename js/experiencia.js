@@ -13,6 +13,7 @@ import { AREAS, MAQUINAS } from "./maquinas.js";
 import { crearVitrina } from "./productos.js";
 import { crearAcabado } from "./post.js";
 import { crearMapa } from "./mapa.js";
+import { cargarProps } from "./ambiente.js";
 
 const reducido = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const tactil = window.matchMedia("(pointer: coarse)").matches;
@@ -87,6 +88,7 @@ export async function iniciarExperiencia({ recorrido }) {
     const gym = construirGimnasio({ calidad, recursos, ...leerContenido() });
     escena.add(gym.escena);
     performance.mark("gym:construido");
+    console.info(`Escena: ${gym.estadisticas.mallas} mallas estáticas fusionadas en ${gym.estadisticas.lotes} lotes`);
 
     const camara = new THREE.PerspectiveCamera(FOV, window.innerWidth / window.innerHeight, .05, 320);
 
@@ -118,6 +120,7 @@ export async function iniciarExperiencia({ recorrido }) {
     const acabado = crearAcabado();
     composer.addPass(acabado);
     let usarComposer = true;
+    performance.mark("gym:composer");
 
     // ---------- tomas ligadas al scroll ----------
     const v3 = (a) => new THREE.Vector3(...a);
@@ -231,6 +234,16 @@ export async function iniciarExperiencia({ recorrido }) {
     }
 
     let visor = null;
+    // Al acercarse al recorrido se adelanta la descarga del visor y del modelo anatómico.
+    if (recorrido?.seccion && "IntersectionObserver" in window) {
+        const previo = new IntersectionObserver((entradas) => {
+            if (!entradas.some((e) => e.isIntersecting)) return;
+            previo.disconnect();
+            const precargar = () => import("./anatomia.js").then((m) => m.precargarModelo()).catch(() => { });
+            "requestIdleCallback" in window ? requestIdleCallback(precargar, { timeout: 3000 }) : setTimeout(precargar, 500);
+        }, { rootMargin: "100% 0px" });
+        previo.observe(recorrido.seccion);
+    }
     recorrido?.on("abrir", async (m) => {
         if (mapa?.activo) mapa.cerrar(AREAS.findIndex((a) => a.id === m.area));
         enfoque = tomaMaquina(m.id);
@@ -340,6 +353,7 @@ export async function iniciarExperiencia({ recorrido }) {
     actual.desplaz.copy(deseada.desplaz);
 
     const vitrina = crearVitrina(document.querySelector("#vitrina-3d"), [...document.querySelectorAll(".producto-3d")]);
+    performance.mark("gym:vitrina");
 
     // ---------- bucle ----------
     const reloj = new THREE.Clock();
@@ -408,12 +422,17 @@ export async function iniciarExperiencia({ recorrido }) {
 
         if (primerCuadro) renderer.shadowMap.needsUpdate = true;
         usarComposer ? composer.render(dt) : renderer.render(escena, camara);
+        if (primerCuadro) performance.mark("gym:escena-dibujada");
         vitrina.render(dt);
 
         if (primerCuadro) {
             primerCuadro = false;
             raiz.classList.add("escena-lista");
             performance.mark("gym:primer-cuadro");
+            // Plantas, mobiliario y objetos CC0 llegan después: no retrasan la entrada.
+            cargarProps(gym.escena)
+                .then(() => { renderer.shadowMap.needsUpdate = true; performance.mark("gym:props"); })
+                .catch((e) => console.warn("Decoración 3D no disponible", e));
         } else if (nivel < 2 && t > 1.5) {
             // Calidad adaptativa por pasos: primero se apaga la oclusión, luego bloom y resolución.
             muestras++;

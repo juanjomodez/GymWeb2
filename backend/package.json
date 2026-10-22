@@ -3,12 +3,23 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.13.0" },
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "node --test",
-    "verify:atlas": "node scripts/verify-registration.js"
+    "verify:atlas": "node scripts/verify-registration.js",
+    "db:preparar": "node scripts/preparar-db.js",
+    "dev:memoria": "node scripts/dev-memoria.js"
   },
-  "dependencies": { "express": "^5.1.0", "mongodb": "^7.0.0" }
+  "dependencies": {
+    "compression": "^1.8.1",
+    "express": "^5.1.0",
+    "mongodb": "^7.0.0"
+  },
+  "devDependencies": {
+    "mongodb-memory-server": "^10.1.4"
+  }
 }
