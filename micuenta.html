@@ -6,43 +6,132 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mi cuenta - GymFlow</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="comun.css">
+    <link rel="stylesheet" href="cuenta.css">
 </head>
 
 <body>
+    <a class="saltar" href="#mi-cuenta">Saltar al contenido</a>
     <header>
         <div>
-            <img src="img/logo.png" alt="Logo de GymFlow">
+            <a href="index.html" aria-label="GymFlow, ir al inicio"><img src="img/logo.png" alt="Logo de GymFlow"></a>
         </div>
-        <nav>
+        <button class="menu-movil" type="button" aria-expanded="false" aria-controls="nav-principal" aria-label="Abrir menú">
+            <span></span><span></span><span></span>
+        </button>
+        <nav id="nav-principal" aria-label="Principal">
             <a href="index.html">Inicio</a>
-            <a href="micuenta.html">Mi cuenta</a>
+            <a href="index.html#planes">Planes</a>
+            <a href="index.html#entrenadores">Entrenadores</a>
+            <a href="index.html#productos">Tienda</a>
+            <a href="micuenta.html" aria-current="page">Mi cuenta</a>
         </nav>
     </header>
 
-    <main>
-        <section id="mi-cuenta">
-            <h1>Mi cuenta</h1>
-            <p>Bienvenido a GymFlow.</p>
-            <img src="img/cuentagym.png" alt="Interior del gimnasio GymFlow">
+    <main id="mi-cuenta" class="cuenta">
+        <div class="cuenta-cabecera">
             <div>
-
-                <article>
-                    <h2>Información personal</h2>
-                    <p>Nombre: <span id="cuenta-nombre">Cargando…</span></p>
-                    <p>Correo: <span id="cuenta-correo">Cargando…</span></p>
-                    <button type="button" id="cerrar-sesion">Cerrar sesión</button>
-                    <p id="cuenta-mensaje" role="status" aria-live="polite"></p>
-                </article>
-
-                <article>
-                    <h2>Mi membresía</h2>
-                    <p>Las membresías estarán disponibles en la siguiente fase.</p>
-                </article>
-
+                <p class="kicker">Mi cuenta</p>
+                <h1>Hola, <span id="cuenta-nombre">…</span></h1>
+                <p class="cuenta-correo" id="cuenta-correo"></p>
             </div>
+            <button type="button" id="cerrar-sesion" class="boton-fantasma">Cerrar sesión</button>
+        </div>
+        <p id="cuenta-mensaje" class="aviso" role="status" aria-live="polite"></p>
+
+        <nav class="cuenta-pestanas" role="tablist" aria-label="Secciones de mi cuenta">
+            <button type="button" role="tab" id="pestana-membresia" aria-controls="membresia" data-panel="membresia">Membresía</button>
+            <button type="button" role="tab" id="pestana-reservas" aria-controls="reservas" data-panel="reservas">Entrenadores</button>
+            <button type="button" role="tab" id="pestana-rutinas" aria-controls="rutinas" data-panel="rutinas">Rutinas</button>
+            <button type="button" role="tab" id="pestana-pedidos" aria-controls="pedidos" data-panel="pedidos">Mis compras</button>
+        </nav>
+
+        <!-- MEMBRESÍA -->
+        <section id="membresia" class="cuenta-panel" role="tabpanel" aria-labelledby="pestana-membresia" hidden>
+            <article class="tarjeta membresia-estado" aria-live="polite">
+                <p class="cargando">Cargando tu membresía…</p>
+            </article>
+
+            <h2 class="cuenta-subtitulo" id="planes-titulo">Planes disponibles</h2>
+            <p class="cuenta-nota">Compra simulada: no se usa ninguna pasarela de pago real. Si compras el mismo plan, el tiempo se suma al que te queda.</p>
+            <div class="planes-cuenta" aria-labelledby="planes-titulo"></div>
+
+            <details class="historial">
+                <summary>Historial de membresías</summary>
+                <ul class="lista-historial"></ul>
+            </details>
+        </section>
+
+        <!-- RESERVAS -->
+        <section id="reservas" class="cuenta-panel" role="tabpanel" aria-labelledby="pestana-reservas" hidden>
+            <article class="tarjeta">
+                <h2>Reservar una cita</h2>
+                <p class="cuenta-nota">Sesiones de 60 minutos en hora de Cali, hasta 30 días adelante. Requiere un Plan Premium activo.</p>
+                <form class="form-reserva">
+                    <div class="campo">
+                        <label for="reserva-entrenador">Entrenador</label>
+                        <select id="reserva-entrenador" required></select>
+                        <p class="entrenador-detalle"></p>
+                    </div>
+                    <div class="campo">
+                        <label for="reserva-fecha">Fecha</label>
+                        <input type="date" id="reserva-fecha" required>
+                    </div>
+                    <fieldset class="horarios">
+                        <legend>Horarios</legend>
+                        <div class="lista-horarios" aria-live="polite"></div>
+                    </fieldset>
+                    <button type="submit" class="boton" disabled>Confirmar cita</button>
+                    <p class="aviso" role="status" aria-live="polite"></p>
+                </form>
+            </article>
+            <h2 class="cuenta-subtitulo">Mis citas</h2>
+            <ul class="lista-reservas"></ul>
+        </section>
+
+        <!-- RUTINAS -->
+        <section id="rutinas" class="cuenta-panel" role="tabpanel" aria-labelledby="pestana-rutinas" hidden>
+            <div class="filtros-rutinas" role="group" aria-label="Filtrar por objetivo">
+                <button type="button" data-objetivo="" aria-pressed="true">Todas</button>
+                <button type="button" data-objetivo="fuerza" aria-pressed="false">Fuerza</button>
+                <button type="button" data-objetivo="hipertrofia" aria-pressed="false">Hipertrofia</button>
+                <button type="button" data-objetivo="resistencia" aria-pressed="false">Resistencia</button>
+                <button type="button" data-objetivo="perdida-grasa" aria-pressed="false">Pérdida de grasa</button>
+            </div>
+            <div class="rutinas-cuenta"></div>
+            <article class="tarjeta rutina-detalle" tabindex="-1" hidden></article>
+        </section>
+
+        <!-- PEDIDOS -->
+        <section id="pedidos" class="cuenta-panel" role="tabpanel" aria-labelledby="pestana-pedidos" hidden>
+            <ul class="lista-pedidos"></ul>
+            <a class="boton" href="index.html#productos">Ir a la tienda</a>
         </section>
     </main>
+
+    <!-- CONFIRMACIÓN DE COMPRA -->
+    <dialog class="dialogo" id="dialogo-compra" aria-labelledby="compra-titulo">
+        <form method="dialog" class="dialogo-form">
+            <h2 id="compra-titulo">Confirmar compra</h2>
+            <p class="compra-plan"></p>
+            <label for="compra-meses">Duración</label>
+            <select id="compra-meses">
+                <option value="1">1 mes</option>
+                <option value="3">3 meses</option>
+                <option value="6">6 meses</option>
+                <option value="12">12 meses</option>
+            </select>
+            <p class="compra-total"></p>
+            <p class="cuenta-nota">Pago simulado para fines académicos.</p>
+            <div class="dialogo-acciones">
+                <button type="submit" value="cancelar" class="boton-fantasma">Cancelar</button>
+                <button type="submit" value="comprar" class="boton">Pagar y activar</button>
+            </div>
+        </form>
+    </dialog>
+
     <script src="web.js" defer></script>
+    <script type="module" src="js/cuenta.js"></script>
 </body>
 
 </html>

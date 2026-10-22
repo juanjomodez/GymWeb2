@@ -12,6 +12,8 @@ import {
     rackPotencia, estacionPress, rackMancuernas, poleaAlta, prensaPiernas, caminadora,
     bicicleta, zonaPesasRusas, cuerdasBatalla, cajones
 } from "./modelos.js";
+import { amueblar } from "./ambiente.js";
+import { fusionarEstaticos } from "./fusionar.js";
 
 // Material de superficie con texturas reales; si no cargaron, usa la textura de canvas de respaldo.
 function superficie(recursos, nombre, repetir, opciones = {}, respaldo = null) {
@@ -82,6 +84,7 @@ function vitrinaPlanes(fuente, planes) {
             g.add(nombre, precio);
         }
         const objeto = objetos[i]();
+        objeto.userData.dinamico = true;
         objeto.scale.setScalar(i === 1 ? 1.25 : 1.7);
         const flota = i !== 1;
         objeto.position.set(x, flota ? 1.38 : .99, 0);
@@ -201,6 +204,8 @@ export function construirGimnasio({ calidad = "alta", recursos = {}, entrenadore
     const fuente = recursos.fuente;
     const escena = grupo();
     const techo = grupo();
+    // El techo se oculta en la vista cenital: se fusiona aparte para conservar ese grupo.
+    techo.userData.raizFusion = true;
     const animables = [];
     const anclas = {};
     const zonasMapa = {};
@@ -298,6 +303,7 @@ export function construirGimnasio({ calidad = "alta", recursos = {}, entrenadore
     // ---------- héroe ----------
     const heroe = mancuerna({ radio: .11, ancho: .095, agarre: .14, banda: true, logo: true });
     heroe.position.set(0, 1.42, 9);
+    heroe.userData.dinamico = true;
     escena.add(heroe);
     escena.add(malla(new THREE.CylinderGeometry(.85, .95, .1, 64), M.plastico, 0, .05, 9));
     escena.add(malla(new THREE.TorusGeometry(.9, .012, 8, 96), M.ledRojo, 0, .1, 9, Math.PI / 2, 0, 0));
@@ -372,6 +378,7 @@ export function construirGimnasio({ calidad = "alta", recursos = {}, entrenadore
     }
     colocar("caminadora", filaCardio, -8.8, -17.6, 0);
     const bicis = grupo();
+    bicis.userData.dinamico = true;
     for (const x of [0, 1.1]) {
         const b = bicicleta();
         b.position.x = x;
@@ -383,6 +390,9 @@ export function construirGimnasio({ calidad = "alta", recursos = {}, entrenadore
     colocar("pesa-rusa", zonaPesasRusas(), 5.2, -14.4, 0);
     colocar("cuerdas", cuerdasBatalla(), 8.6, -22.2, 0);
     colocar("cajon", cajones(), 11.3, -18.8, 0);
+
+    // ---------- equipos extra, instalaciones y decoración ----------
+    amueblar({ escena, techo, animables, fuente });
 
     // ---------- zonas del mapa (vista cenital) ----------
     for (const area of AREAS) {
@@ -421,5 +431,9 @@ export function construirGimnasio({ calidad = "alta", recursos = {}, entrenadore
     rojoFondo.position.set(0, 4, -27);
     escena.add(focoHeroe, contraluz, rojoFondo);
 
-    return { escena, anclas, animables, heroe, letreroMaterial, techo, zonasMapa };
+    // Todo lo estático se une por material: menos llamadas de dibujo con muchos más objetos.
+    const fusion = [fusionarEstaticos(techo), fusionarEstaticos(escena)];
+    const estadisticas = { mallas: fusion.reduce((s, f) => s + f.antes, 0), lotes: fusion.reduce((s, f) => s + f.despues, 0) };
+
+    return { escena, anclas, animables, heroe, letreroMaterial, techo, zonasMapa, estadisticas };
 }

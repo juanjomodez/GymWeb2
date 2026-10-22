@@ -1,0 +1,576 @@
+/* Mi cuenta: membresía, citas, rutinas y compras. */
+#mi-cuenta.cuenta {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 48px clamp(16px, 5vw, 40px) 90px;
+    text-align: left;
+}
+
+/* Anula la cuadrícula de la versión anterior de la página (style.css: #mi-cuenta > div). */
+#mi-cuenta.cuenta>div {
+    display: flex;
+    max-width: none;
+    margin: 0 0 22px;
+}
+
+.kicker {
+    margin-bottom: 8px;
+    color: var(--red-bright);
+    font-size: .78rem;
+    font-weight: 800;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+}
+
+.cuenta-cabecera {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 22px;
+}
+
+.cuenta-cabecera h1 {
+    font-size: clamp(2rem, 4vw, 3rem);
+    letter-spacing: -.04em;
+    line-height: 1.1;
+}
+
+.cuenta-correo,
+.cuenta-nota {
+    color: var(--muted);
+    font-size: .92rem;
+}
+
+.cuenta-pestanas {
+    display: flex;
+    gap: 6px;
+    margin: 26px 0;
+    padding: 6px;
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--surface);
+    scrollbar-width: none;
+}
+
+.cuenta-pestanas button {
+    flex: 1 0 auto;
+    min-height: 44px;
+    padding: 10px 18px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.cuenta-pestanas button:hover {
+    color: var(--text);
+}
+
+.cuenta-pestanas button[aria-selected="true"] {
+    background: var(--red);
+    color: #fff;
+}
+
+.cuenta-panel {
+    animation: aparecer .3s ease;
+}
+
+@keyframes aparecer {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+}
+
+.tarjeta {
+    padding: clamp(20px, 3vw, 28px);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--surface);
+}
+
+.tarjeta h2 {
+    font-size: 1.45rem;
+    letter-spacing: -.02em;
+}
+
+.cuenta-subtitulo {
+    margin: 38px 0 8px;
+    font-size: 1.5rem;
+}
+
+.membresia-cabecera {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.membresia-datos {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 14px;
+    margin: 22px 0 18px;
+}
+
+.membresia-datos div {
+    padding: 14px;
+    border-radius: 12px;
+    background: var(--surface-raised);
+}
+
+.membresia-datos dt {
+    color: var(--muted);
+    font-size: .8rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+
+.membresia-datos dd {
+    margin-top: 4px;
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.progreso {
+    height: 8px;
+    overflow: hidden;
+    border-radius: 99px;
+    background: var(--surface-raised);
+}
+
+.progreso span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--red-dark), var(--red-bright));
+}
+
+.renovacion {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+}
+
+.renovacion p:first-child {
+    font-weight: 750;
+}
+
+.interruptor {
+    position: relative;
+    flex: 0 0 auto;
+    width: 58px;
+    height: 32px;
+    border: 1px solid rgba(255, 255, 255, .2);
+    border-radius: 99px;
+    background: #2a2a30;
+    cursor: pointer;
+    transition: background .2s ease;
+}
+
+.interruptor span {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform .2s ease;
+}
+
+.interruptor[aria-checked="true"] {
+    background: var(--red);
+}
+
+.interruptor[aria-checked="true"] span {
+    transform: translateX(26px);
+}
+
+.estado {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 99px;
+    font-size: .78rem;
+    font-weight: 800;
+    letter-spacing: .04em;
+}
+
+.estado-activa {
+    background: rgba(52, 199, 120, .14);
+    color: #8be8b5;
+}
+
+.estado-vencida,
+.estado-reemplazada {
+    background: rgba(255, 255, 255, .08);
+    color: var(--muted);
+}
+
+.estado-cancelada {
+    background: rgba(237, 28, 36, .12);
+    color: #ff9a9d;
+}
+
+.planes-cuenta,
+.rutinas-cuenta {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+    margin-top: 18px;
+}
+
+.plan-cuenta,
+.rutina {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.plan-cuenta ul {
+    flex: 1;
+    padding-left: 18px;
+    color: #d2cecd;
+    font-size: .92rem;
+}
+
+.plan-actual {
+    border-color: rgba(52, 199, 120, .45);
+}
+
+.plan-actual .estado {
+    align-self: flex-start;
+}
+
+.plan-precio {
+    font-size: 1.2rem;
+    font-weight: 800;
+}
+
+.historial {
+    margin-top: 30px;
+}
+
+.historial summary {
+    min-height: 44px;
+    cursor: pointer;
+    font-weight: 750;
+}
+
+.lista-historial,
+.lista-reservas,
+.lista-pedidos {
+    display: grid;
+    gap: 12px;
+    margin-top: 14px;
+    list-style: none;
+}
+
+.lista-historial li {
+    display: grid;
+    grid-template-columns: 1.2fr 2fr auto auto;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: var(--surface);
+    font-size: .92rem;
+}
+
+.form-reserva {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-top: 18px;
+}
+
+.campo label,
+.horarios legend,
+.dialogo-form label {
+    display: block;
+    margin-bottom: 7px;
+    font-size: .92rem;
+    font-weight: 700;
+}
+
+.campo select,
+.campo input,
+.dialogo-form select {
+    width: 100%;
+    min-height: 46px;
+    padding: 10px 12px;
+    border: 1px solid #3b393b;
+    border-radius: 8px;
+    background: #101012;
+    color: var(--text);
+    font: inherit;
+    color-scheme: dark;
+}
+
+.entrenador-detalle {
+    margin-top: 6px;
+    color: var(--muted);
+    font-size: .85rem;
+}
+
+.horarios {
+    grid-column: 1 / -1;
+    border: 0;
+}
+
+.lista-horarios {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.horario {
+    position: relative;
+}
+
+.horario input {
+    position: absolute;
+    opacity: 0;
+}
+
+.horario span {
+    display: inline-block;
+    min-width: 76px;
+    padding: 10px 14px;
+    border: 1px solid rgba(255, 255, 255, .18);
+    border-radius: 10px;
+    text-align: center;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.horario input:checked+span {
+    border-color: var(--red);
+    background: var(--red);
+    color: #fff;
+}
+
+.horario input:focus-visible+span {
+    outline: 3px solid rgba(255, 52, 59, .85);
+    outline-offset: 2px;
+}
+
+.horario input:disabled+span {
+    opacity: .35;
+    text-decoration: line-through;
+    cursor: not-allowed;
+}
+
+.form-reserva>.boton,
+.form-reserva>.aviso {
+    grid-column: 1 / -1;
+    justify-self: start;
+}
+
+.reserva {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.reserva img {
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.reserva div {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+}
+
+.reserva div span {
+    color: var(--muted);
+    font-size: .9rem;
+}
+
+.vacio {
+    color: var(--muted);
+}
+
+.filtros-rutinas {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.filtros-rutinas button {
+    min-height: 40px;
+    padding: 8px 16px;
+    border: 1px solid rgba(255, 255, 255, .18);
+    border-radius: 99px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.filtros-rutinas button[aria-pressed="true"] {
+    border-color: var(--red);
+    background: var(--red);
+}
+
+.etiqueta-rutina {
+    color: var(--red-bright);
+    font-size: .76rem;
+    font-weight: 800;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+}
+
+.rutina p.cuenta-nota {
+    flex: 1;
+}
+
+.rutina-meta {
+    font-size: .85rem;
+    font-weight: 700;
+}
+
+.rutina .boton-fantasma {
+    align-self: flex-start;
+}
+
+.rutina-detalle {
+    margin-top: 22px;
+    scroll-margin-top: 100px;
+}
+
+.tabla-scroll {
+    margin-top: 16px;
+    overflow-x: auto;
+}
+
+.rutina-detalle table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .93rem;
+}
+
+.rutina-detalle th,
+.rutina-detalle td {
+    padding: 11px 10px;
+    border-bottom: 1px solid var(--line);
+    text-align: left;
+}
+
+.rutina-detalle thead th {
+    color: var(--muted);
+    font-size: .78rem;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+
+.oculto {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+}
+
+.pedido ul {
+    margin: 12px 0;
+    padding-left: 18px;
+    color: #d2cecd;
+}
+
+.lista-pedidos+.boton {
+    margin-top: 20px;
+}
+
+.dialogo {
+    width: min(440px, calc(100% - 32px));
+    margin: auto;
+    padding: 0;
+    border: 1px solid rgba(237, 28, 36, .45);
+    border-radius: 20px;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow);
+}
+
+.dialogo::backdrop {
+    background: rgba(0, 0, 0, .65);
+    backdrop-filter: blur(4px);
+}
+
+.dialogo-form {
+    display: grid;
+    gap: 12px;
+    padding: 28px;
+}
+
+.compra-total {
+    font-size: 1.3rem;
+    font-weight: 800;
+}
+
+.dialogo-acciones {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+@media (max-width: 700px) {
+    .form-reserva {
+        grid-template-columns: 1fr;
+    }
+
+    .lista-historial li {
+        grid-template-columns: 1fr auto;
+    }
+
+    .reserva {
+        flex-wrap: wrap;
+    }
+
+    .rutina-detalle thead {
+        display: none;
+    }
+
+    .rutina-detalle tr {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--line);
+    }
+
+    .rutina-detalle tbody th {
+        grid-column: 1 / -1;
+        border: 0;
+    }
+
+    .rutina-detalle td {
+        border: 0;
+        padding: 4px 10px;
+    }
+
+    .rutina-detalle td::before {
+        content: attr(data-titulo) ": ";
+        color: var(--muted);
+        font-size: .8rem;
+    }
+}

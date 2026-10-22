@@ -32,7 +32,7 @@ test('login, cookie segura, cuenta protegida, rotación y logout', async t => {
   assert.equal((await request('/api/me')).status, 401);
   const redirect = await request('/micuenta.html', { redirect: 'manual' });
   assert.equal(redirect.status, 302);
-  assert.equal(redirect.headers.get('location'), '/login.html');
+  assert.equal(redirect.headers.get('location'), '/login.html?volver=%2Fmicuenta.html');
   const result = await login();
   assert.equal(result.status, 200);
   const cookieHeader = result.headers.get('set-cookie');

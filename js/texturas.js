@@ -322,6 +322,73 @@ export function etiquetaProducto({ titulo, subtitulo, fondo, acento, textoColor 
     return textura(canvas, { repetir: [1, 1] });
 }
 
+// Póster motivacional para los muros: titular grande y una línea secundaria.
+export function cartel(titulo, subtitulo, { fondo = "#111113", acento = "#ed1c24" } = {}) {
+    const [canvas, ctx] = lienzo(512, 720);
+    ctx.fillStyle = fondo;
+    ctx.fillRect(0, 0, 512, 720);
+    ruido(ctx, 512, 720, 5000, 60, .25);
+    ctx.fillStyle = acento;
+    ctx.beginPath();
+    ctx.moveTo(0, 520); ctx.lineTo(512, 430); ctx.lineTo(512, 470); ctx.lineTo(0, 560);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#f6f4f2";
+    ctx.textAlign = "center";
+    ctx.font = "900 34px Inter, Segoe UI, Arial";
+    ctx.fillText("GYMFLOW", 256, 70);
+    ctx.font = "900 96px Inter, Segoe UI, Arial";
+    titulo.split(" ").forEach((palabra, i) => ctx.fillText(palabra, 256, 210 + i * 100));
+    ctx.font = "700 30px Inter, Segoe UI, Arial";
+    ctx.fillStyle = "#c8c4c3";
+    ctx.fillText(subtitulo, 256, 640);
+    ctx.strokeStyle = acento;
+    ctx.lineWidth = 10;
+    ctx.strokeRect(14, 14, 484, 692);
+    const tex = textura(canvas);
+    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+    return tex;
+}
+
+// Puerta de casillero: rejillas de ventilación, manija y franja de color.
+export function puertaLocker() {
+    const [canvas, ctx] = lienzo(128, 512);
+    ctx.fillStyle = "#1c1c21";
+    ctx.fillRect(0, 0, 128, 512);
+    ruido(ctx, 128, 512, 1500, 70, .2);
+    ctx.fillStyle = "#0b0b0d";
+    for (let i = 0; i < 6; i++) ctx.fillRect(28, 30 + i * 14, 72, 6);
+    for (let i = 0; i < 6; i++) ctx.fillRect(28, 420 + i * 14, 72, 6);
+    ctx.fillStyle = "#9a9da3";
+    ctx.fillRect(98, 230, 10, 54);
+    ctx.fillStyle = "#ed1c24";
+    ctx.fillRect(0, 0, 128, 8);
+    ctx.strokeStyle = "rgba(0,0,0,.8)";
+    ctx.lineWidth = 6;
+    ctx.strokeRect(3, 3, 122, 506);
+    return textura(canvas);
+}
+
+// Pizarra con el entrenamiento del día.
+export function pizarraWod(lineas) {
+    const [canvas, ctx] = lienzo(768, 512);
+    ctx.fillStyle = "#f1f0ec";
+    ctx.fillRect(0, 0, 768, 512);
+    ruido(ctx, 768, 512, 4000, 200, .15);
+    ctx.fillStyle = "#ed1c24";
+    ctx.font = "900 54px Inter, Segoe UI, Arial";
+    ctx.fillText("WOD DE HOY", 40, 78);
+    ctx.fillStyle = "#1b1b1f";
+    ctx.font = "700 36px Inter, Segoe UI, Arial";
+    lineas.forEach((l, i) => ctx.fillText(l, 52, 150 + i * 62));
+    ctx.strokeStyle = "#1b1b1f";
+    ctx.lineWidth = 14;
+    ctx.strokeRect(7, 7, 754, 498);
+    const tex = textura(canvas);
+    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+    return tex;
+}
+
 // Marcas de medida del shaker.
 export function marcasShaker() {
     const [canvas, ctx] = lienzo(512, 512);

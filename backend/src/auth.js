@@ -19,7 +19,7 @@ export function setupAuth(app, database) {
 
   app.use('/api', (request, response, next) => {
     response.set('Cache-Control', 'no-store');
-    if (request.method === 'POST' && request.headers.origin && request.headers.origin !== `${request.protocol}://${request.get('host')}`) {
+    if (!['GET', 'HEAD'].includes(request.method) && request.headers.origin && request.headers.origin !== `${request.protocol}://${request.get('host')}`) {
       return response.status(403).json({ message: 'Origen no permitido.' });
     }
     next();
@@ -46,7 +46,7 @@ export function setupAuth(app, database) {
       const valid = await verifyPassword(password, user?.passwordHash || await dummyHash);
       if (!user || !valid) return response.status(401).json({ message: 'Correo o contraseña incorrectos.' });
       const token = randomBytes(32).toString('hex');
-      await database.createSession({ _id: tokenHash(token), userId: user._id.toString(), expiresAt: new Date(now + duration) });
+      await database.createSession({ _id: tokenHash(token), userId: user._id, expiresAt: new Date(now + duration) });
       const previous = readToken(request);
       if (previous) await database.deleteSession(tokenHash(previous));
       response.cookie(cookieName, token, { ...options(request), maxAge: duration });
@@ -62,7 +62,7 @@ export function setupAuth(app, database) {
       const user = token ? await database.findSessionUser(tokenHash(token)) : null;
       if (!user) {
         response.clearCookie(cookieName, options(request));
-        if (request.path === '/micuenta.html') return response.redirect('/login.html');
+        if (request.path === '/micuenta.html') return response.redirect(`/login.html?volver=${encodeURIComponent(request.originalUrl)}`);
         return response.status(401).json({ message: 'Inicia sesión para continuar.' });
       }
       request.user = user;
@@ -72,6 +72,14 @@ export function setupAuth(app, database) {
   }
 
   app.get('/api/me', requireUser, (request, response) => response.json({ usuario: request.user }));
+  // Para la navegación pública: indica si hay sesión sin responder 401.
+  app.get('/api/sesion', async (request, response) => {
+    const token = readToken(request);
+    try {
+      const user = token ? await database.findSessionUser(tokenHash(token)) : null;
+      response.json({ usuario: user ? { nombre: user.nombre } : null });
+    } catch { response.json({ usuario: null }); }
+  });
   app.post('/api/logout', async (request, response) => {
     try {
       const token = readToken(request);
