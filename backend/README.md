@@ -1,4 +1,56 @@
-# Gym — Avance 1
+# Gym — Backend
+
+## Fase 4: base de datos completa y funciones de cuenta
+
+Base `GymWeb` en MongoDB. Al iniciar, el servidor crea o actualiza cada colección con su
+validador `$jsonSchema` (`validationLevel: strict`), sus índices y el catálogo. Es idempotente:
+`npm run db:preparar` hace lo mismo a mano contra Atlas y nunca toca datos de usuarios.
+
+| Colección | Contenido | Índices y reglas clave |
+|---|---|---|
+| `usuarios` | nombre, correo, hash scrypt, rol | `correo` único |
+| `sesiones` | SHA-256 del token, usuario, expiración | TTL sobre `expiresAt` |
+| `planes` | precio mensual, personas, beneficios, si incluye entrenador | `_id` legible (`basico`, `premium`…) |
+| `membresias` | copia del plan, meses, fechas, estado, renovación, pagos simulados | **una sola activa por usuario** (índice único parcial) |
+| `entrenadores` | especialidad, zona, horario semanal (hora de Cali) | — |
+| `reservas` | usuario, entrenador, inicio/fin, estado | **un horario de entrenador no se reserva dos veces** (único parcial) |
+| `rutinas` | objetivo, nivel, ejercicios con series y músculos | por objetivo |
+| `productos` | precio, imagen, stock | — |
+| `carritos` | `_id` = usuario, productos y cantidades | máx. 30 productos, 1–20 unidades |
+| `pedidos` | líneas con precio congelado, total, referencia | referencia única |
+| `maquinas` | datos de `js/maquinas.js` (fuente única) | por área |
+
+Reglas de negocio (en `src/database.js`):
+
+- **Compra de membresía** (transacción): mismo plan → se suma el tiempo; otro plan → la anterior
+  queda `reemplazada` y la nueva empieza hoy. Duraciones de 1, 3, 6 o 12 meses.
+- **Vencimiento y renovación automática**: al consultar la cuenta, una membresía vencida se renueva
+  (pago simulado registrado) si la renovación está activa; si no, pasa a `vencida`.
+- **Reservas**: solo con Plan Premium activo, en horas del horario del entrenador, hasta 30 días
+  adelante y máximo 4 citas pendientes. Los choques simultáneos los rechaza el índice único (409).
+- **Pedidos** (transacción): descuenta stock solo si alcanza; si un producto no alcanza, se revierte
+  todo. Vacía el carrito al terminar.
+
+Las transacciones requieren un *replica set*: Atlas (incluido el nivel gratuito) lo es.
+
+### API
+
+Públicas: `GET /api/planes`, `/api/entrenadores`, `/api/entrenadores/:id/disponibilidad?fecha=AAAA-MM-DD`,
+`/api/rutinas?objetivo=`, `/api/productos`, `/api/maquinas`, `/api/sesion`.
+Con sesión: `GET/PATCH /api/membresia`, `POST /api/membresias`, `GET/POST /api/reservas`,
+`DELETE /api/reservas/:id`, `GET /api/rutinas/:id`, `GET/PUT /api/carrito`, `GET/POST /api/pedidos`.
+Toda escritura rechaza un `Origin` externo; los errores no exponen detalles del driver.
+
+### Probar sin Atlas
+
+```powershell
+cd backend
+npm run dev:memoria
+```
+
+Arranca la web en http://127.0.0.1:3000 con un MongoDB temporal en memoria (los datos se pierden al
+cerrarlo). La primera vez descarga el binario oficial de `mongod`. `npm test` usa el mismo mecanismo
+para las pruebas de integración (esquema, membresías, reservas, carrito y pedidos).
 
 ## Fase 3: inicio de sesión y Mi cuenta
 

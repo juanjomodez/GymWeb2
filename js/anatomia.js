@@ -88,10 +88,19 @@ function crearMateriales() {
     };
 }
 
+// Descarga y decodificación compartidas: `precargarModelo` puede llamarse antes de abrir la ficha.
+let gltfPendiente = null;
+export function precargarModelo() {
+    gltfPendiente ??= new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(MODELO).catch((error) => {
+        gltfPendiente = null;
+        throw error;
+    });
+    return gltfPendiente;
+}
+
 // Modelo real: cada nodo `musculo_<id>` ya viene fusionado por grupo y en metros (pies en y = 0).
 async function cargarModelo(mat) {
-    const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
-    const gltf = await loader.loadAsync(MODELO);
+    const gltf = await precargarModelo();
     const figura = gltf.scene;
     const musculos = [];
     figura.traverse((o) => {

@@ -62,7 +62,7 @@ export function setupAuth(app, database) {
       const user = token ? await database.findSessionUser(tokenHash(token)) : null;
       if (!user) {
         response.clearCookie(cookieName, options(request));
-        if (request.path === '/micuenta.html') return response.redirect('/login.html');
+        if (request.path === '/micuenta.html') return response.redirect(`/login.html?volver=${encodeURIComponent(request.originalUrl)}`);
         return response.status(401).json({ message: 'Inicia sesión para continuar.' });
       }
       request.user = user;
@@ -72,6 +72,14 @@ export function setupAuth(app, database) {
   }
 
   app.get('/api/me', requireUser, (request, response) => response.json({ usuario: request.user }));
+  // Para la navegación pública: indica si hay sesión sin responder 401.
+  app.get('/api/sesion', async (request, response) => {
+    const token = readToken(request);
+    try {
+      const user = token ? await database.findSessionUser(tokenHash(token)) : null;
+      response.json({ usuario: user ? { nombre: user.nombre } : null });
+    } catch { response.json({ usuario: null }); }
+  });
   app.post('/api/logout', async (request, response) => {
     try {
       const token = readToken(request);
