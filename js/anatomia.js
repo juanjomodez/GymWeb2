@@ -222,7 +222,7 @@ export class VisorAnatomico {
         this.escena.environmentIntensity = .45;
 
         this.camara = new THREE.PerspectiveCamera(30, 1, .1, 50);
-        this.camara.position.set(0, 1.05, 3.1);
+        this.camara.position.set(0, 1.0, 3.35);
 
         this.mat = crearMateriales();
         this.musculos = [];
@@ -302,7 +302,7 @@ export class VisorAnatomico {
         this.seleccion = { principales, secundarios };
         this.pintar();
         const espalda = principales.filter((id) => DE_ESPALDA.has(id)).length > principales.length / 2;
-        this.camara.position.set(espalda ? -.8 : .8, 1.15, espalda ? -3.1 : 3.1);
+        this.camara.position.set(espalda ? -.8 : .8, 1.1, espalda ? -3.3 : 3.3);
         this.controles.autoRotate = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
         this.controles.update();
     }
