@@ -19,7 +19,7 @@ export function setupAuth(app, database) {
 
   app.use('/api', (request, response, next) => {
     response.set('Cache-Control', 'no-store');
-    if (request.method === 'POST' && request.headers.origin && request.headers.origin !== `${request.protocol}://${request.get('host')}`) {
+    if (!['GET', 'HEAD'].includes(request.method) && request.headers.origin && request.headers.origin !== `${request.protocol}://${request.get('host')}`) {
       return response.status(403).json({ message: 'Origen no permitido.' });
     }
     next();
@@ -46,7 +46,7 @@ export function setupAuth(app, database) {
       const valid = await verifyPassword(password, user?.passwordHash || await dummyHash);
       if (!user || !valid) return response.status(401).json({ message: 'Correo o contraseña incorrectos.' });
       const token = randomBytes(32).toString('hex');
-      await database.createSession({ _id: tokenHash(token), userId: user._id.toString(), expiresAt: new Date(now + duration) });
+      await database.createSession({ _id: tokenHash(token), userId: user._id, expiresAt: new Date(now + duration) });
       const previous = readToken(request);
       if (previous) await database.deleteSession(tokenHash(previous));
       response.cookie(cookieName, token, { ...options(request), maxAge: duration });
