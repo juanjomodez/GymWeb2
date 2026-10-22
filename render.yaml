@@ -1,0 +1,25 @@
+# Blueprint de Render: un solo servicio web sirve la página y la API.
+# En Render: New → Blueprint → elegir este repositorio. MONGODB_URI se pide al crear
+# el servicio (sync: false) y nunca se guarda en Git.
+services:
+  - type: web
+    name: gymflow
+    runtime: node
+    plan: free
+    region: virginia
+    branch: main
+    buildCommand: cd backend && npm ci --omit=dev
+    startCommand: cd backend && node src/server.js
+    healthCheckPath: /vivo
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22.14.0
+      - key: HOST
+        value: 0.0.0.0
+      - key: TRUST_PROXY
+        value: "1"
+      - key: MONGODB_DB
+        value: GymWeb
+      - key: MONGODB_URI
+        sync: false

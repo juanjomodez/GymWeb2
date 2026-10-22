@@ -15,6 +15,7 @@
     "dev:memoria": "node scripts/dev-memoria.js"
   },
   "dependencies": {
+    "compression": "^1.8.1",
     "express": "^5.1.0",
     "mongodb": "^7.0.0"
   },

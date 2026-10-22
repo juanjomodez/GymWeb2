@@ -13,6 +13,7 @@ import { AREAS, MAQUINAS } from "./maquinas.js";
 import { crearVitrina } from "./productos.js";
 import { crearAcabado } from "./post.js";
 import { crearMapa } from "./mapa.js";
+import { cargarProps } from "./ambiente.js";
 
 const reducido = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const tactil = window.matchMedia("(pointer: coarse)").matches;
@@ -87,6 +88,7 @@ export async function iniciarExperiencia({ recorrido }) {
     const gym = construirGimnasio({ calidad, recursos, ...leerContenido() });
     escena.add(gym.escena);
     performance.mark("gym:construido");
+    console.info(`Escena: ${gym.estadisticas.mallas} mallas estáticas fusionadas en ${gym.estadisticas.lotes} lotes`);
 
     const camara = new THREE.PerspectiveCamera(FOV, window.innerWidth / window.innerHeight, .05, 320);
 
@@ -427,6 +429,10 @@ export async function iniciarExperiencia({ recorrido }) {
             primerCuadro = false;
             raiz.classList.add("escena-lista");
             performance.mark("gym:primer-cuadro");
+            // Plantas, mobiliario y objetos CC0 llegan después: no retrasan la entrada.
+            cargarProps(gym.escena)
+                .then(() => { renderer.shadowMap.needsUpdate = true; performance.mark("gym:props"); })
+                .catch((e) => console.warn("Decoración 3D no disponible", e));
         } else if (nivel < 2 && t > 1.5) {
             // Calidad adaptativa por pasos: primero se apaga la oclusión, luego bloom y resolución.
             muestras++;

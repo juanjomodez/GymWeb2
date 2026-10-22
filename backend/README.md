@@ -1,5 +1,26 @@
 # Gym — Backend
 
+## Publicar en la web (Render + MongoDB Atlas)
+
+Un solo servicio de Render sirve la página y la API (mismo dominio, cookies seguras).
+`render.yaml` en la raíz del repositorio deja todo configurado.
+
+1. **Atlas**: crea un clúster gratuito M0 (AWS, N. Virginia — cerca de Render `virginia`).
+   - *Database Access*: usuario con contraseña larga aleatoria y solo `readWrite` sobre `GymWeb`.
+   - *Network Access*: Render gratuito no tiene IP fija, así que hay que permitir `0.0.0.0/0`.
+     La protección queda en la contraseña del usuario y en sus permisos limitados a `GymWeb`.
+   - *Connect → Drivers*: copia la URI `mongodb+srv://…` con tu usuario y contraseña.
+2. **Render**: *New → Blueprint* → elige este repositorio. Cuando pida `MONGODB_URI`, pega la URI.
+   Cada push a `main` vuelve a publicar.
+3. Al arrancar, el servidor crea colecciones, validadores, índices y catálogo (`/health` muestra
+   si la base responde). Render comprueba `/vivo`, que no depende de la base.
+
+El plan gratuito de Render se suspende tras 15 minutos sin visitas; la siguiente visita tarda
+cerca de un minuto en despertar el servidor.
+
+Variables: `MONGODB_URI` (secreta), `MONGODB_DB=GymWeb`, `HOST=0.0.0.0`, `TRUST_PROXY=1`
+(confía en el proxy HTTPS de Render para cookies `Secure`, HSTS y el control de origen).
+
 ## Fase 4: base de datos completa y funciones de cuenta
 
 Base `GymWeb` en MongoDB. Al iniciar, el servidor crea o actualiza cada colección con su

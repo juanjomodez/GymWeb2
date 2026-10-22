@@ -16,3 +16,4 @@ Las texturas se redujeron a 1024/512 px. Los mapas `_arm` empaquetan oclusión (
 | Recurso | Archivo(s) | Fuente | Licencia |
 |---|---|---|---|
 | Z-Anatomy: sistema muscular y regiones del cuerpo | `modelos/anatomia.glb` (agrupado en 14 grupos musculares, simplificado y comprimido con `herramientas/convertir-anatomia.mjs`) | [Z-Anatomy](https://github.com/LluisV/Z-Anatomy) (`MuscularSystem100.fbx`, `Regions of human body100.fbx`) | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/): el GLB derivado se distribuye bajo la misma licencia |
+| Poly Haven: potted_plant_02, potted_plant_04, planter_box_01, old_tyre, wall_clock, WetFloorSign_01, standing_chalkboard_01, sofa_02, modern_arm_chair_01, security_camera_01, metal_trash_can, hanging_industrial_lamp | `modelos/props.glb` (unidos, texturas WebP de 256–512 px y compresión meshopt con `herramientas/empaquetar-props.mjs`) | [Poly Haven](https://polyhaven.com/models) | CC0 |
