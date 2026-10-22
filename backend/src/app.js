@@ -1,4 +1,5 @@
 import express from 'express';
+import compression from 'compression';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { hashPassword, validateRegistration } from './registration.js';
@@ -7,9 +8,24 @@ import { setupApi } from './api.js';
 
 const frontend = fileURLToPath(new URL('../../', import.meta.url));
 
-export function createApp(database) {
+export function createApp(database, { trustProxy = 0 } = {}) {
   const app = express();
   app.disable('x-powered-by');
+  // Con proxy de confianza, request.secure/protocol/ip reflejan al cliente real (cookies Secure, origen, límites).
+  if (trustProxy) app.set('trust proxy', trustProxy);
+  app.use(compression());
+  app.use((request, response, next) => {
+    response.set({
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
+      'X-Frame-Options': 'DENY',
+      'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+    });
+    if (request.secure) response.set('Strict-Transport-Security', 'max-age=15552000');
+    next();
+  });
+  // Comprobación de vida para el hosting: no depende de la base de datos.
+  app.get('/vivo', (_request, response) => response.set('Cache-Control', 'no-store').json({ status: 'ok' }));
   app.use(express.json({ limit: '8kb' }));
   const requireUser = setupAuth(app, database);
   app.get('/micuenta.html', requireUser, (_req, res) => res.sendFile(path.join(frontend, 'micuenta.html'), { dotfiles: 'allow' }));
