@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { hashPassword, validateRegistration } from './registration.js';
 import { setupAuth } from './auth.js';
+import { setupApi } from './api.js';
 
 const frontend = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -18,9 +19,10 @@ export function createApp(database) {
     app.get(`/${file}`, (_req, res) => res.sendFile(path.join(frontend, file), { dotfiles: 'allow' }));
   }
   app.get('/', (_req, res) => res.sendFile(path.join(frontend, 'index.html'), { dotfiles: 'allow' }));
-  app.use('/img', express.static(path.join(frontend, 'img'), { dotfiles: 'deny' }));
-  app.use('/js', express.static(path.join(frontend, 'js'), { dotfiles: 'deny' }));
-  app.use('/assets', express.static(path.join(frontend, 'assets'), { dotfiles: 'deny' }));
+  // Imágenes, texturas y modelos casi no cambian: caché de una semana. El código se revalida (ETag).
+  app.use('/img', express.static(path.join(frontend, 'img'), { dotfiles: 'deny', maxAge: '7d' }));
+  app.use('/assets', express.static(path.join(frontend, 'assets'), { dotfiles: 'deny', maxAge: '7d' }));
+  app.use('/js', express.static(path.join(frontend, 'js'), { dotfiles: 'deny', maxAge: 0 }));
 
   let activeRegistrations = 0;
   app.post('/api/usuarios', async (request, response) => {
@@ -45,6 +47,8 @@ export function createApp(database) {
     }
   });
 
+  setupApi(app, database, requireUser);
+
   app.get('/health', async (_request, response) => {
     response.set('Cache-Control', 'no-store');
     try {
@@ -55,6 +59,8 @@ export function createApp(database) {
       response.status(503).json({ status: 'error', database: 'unavailable' });
     }
   });
+
+  app.use('/api', (_request, response) => response.status(404).json({ message: 'Ruta no encontrada.' }));
 
   app.use((error, _request, response, _next) => {
     const status = error.type === 'entity.too.large' ? 413 : error.type === 'entity.parse.failed' ? 400 : 500;
