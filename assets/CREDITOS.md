@@ -12,3 +12,7 @@
 | Fuente Anton | `fuentes/anton.json` (convertida al formato typeface de Three.js) | [Google Fonts](https://fonts.google.com/specimen/Anton) | SIL OFL 1.1 (`fuentes/OFL-Anton.txt`) |
 
 Las texturas se redujeron a 1024/512 px. Los mapas `_arm` empaquetan oclusión (R), rugosidad (G) y metalicidad (B).
+
+| Recurso | Archivo(s) | Fuente | Licencia |
+|---|---|---|---|
+| Z-Anatomy: sistema muscular y regiones del cuerpo | `modelos/anatomia.glb` (agrupado en 14 grupos musculares, simplificado y comprimido con `herramientas/convertir-anatomia.mjs`) | [Z-Anatomy](https://github.com/LluisV/Z-Anatomy) (`MuscularSystem100.fbx`, `Regions of human body100.fbx`) | [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/): el GLB derivado se distribuye bajo la misma licencia |
