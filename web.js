@@ -272,6 +272,7 @@ function setupProductCart() {
             if (response.status === 401) { loggedIn = false; writeLocalCart(items); return; }
             if (!response.ok) throw new Error();
         } catch {
+            delete feedback.dataset.tipo;
             feedback.textContent = "No se pudo guardar el carrito. Revisa tu conexión.";
         }
     }
@@ -389,6 +390,7 @@ function setupProductCart() {
             return;
         }
         payButton.disabled = true;
+        delete feedback.dataset.tipo;
         feedback.textContent = "Procesando el pago simulado…";
         try {
             window.clearTimeout(syncTimer);
@@ -399,6 +401,7 @@ function setupProductCart() {
             cart.clear();
             renderCart();
             feedback.textContent = "";
+            feedback.dataset.tipo = "exito";
             const done = document.createElement("span");
             done.textContent = `${result.message} `;
             const link = document.createElement("a");

@@ -181,3 +181,16 @@
         display: none;
     }
 }
+
+/* Compra realizada en el carrito: aviso de éxito en verde, no con el estilo de error. */
+.carrito-feedback[data-tipo="exito"] {
+    border-color: rgba(52, 199, 120, .45);
+    background: rgba(52, 199, 120, .08);
+    color: #9ff0c3;
+}
+
+.carrito-feedback[data-tipo="exito"] a {
+    color: #fff;
+    font-weight: 750;
+    text-decoration: underline;
+}
