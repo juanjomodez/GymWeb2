@@ -1,10 +1,11 @@
 // Esquema de GymWeb: validadores $jsonSchema e índices de cada colección.
-// `asegurarEsquema` es idempotente: crea lo que falta y actualiza validadores existentes.
 
 const texto = (min, max) => ({ bsonType: 'string', minLength: min, maxLength: max });
 const entero = (minimum, maximum) => ({ bsonType: ['int', 'long'], minimum, ...(maximum === undefined ? {} : { maximum }) });
 const fecha = { bsonType: 'date' };
 const slug = { bsonType: 'string', pattern: '^[a-z0-9]+(-[a-z0-9]+)*$', maxLength: 60 };
+export const TIPOS_FOTO = ['image/jpeg', 'image/png', 'image/webp'];
+export const MAX_FOTO = 2 * 1024 * 1024;
 const MUSCULOS = ['pectorales', 'deltoides', 'biceps', 'triceps', 'antebrazos', 'abdominales', 'oblicuos', 'trapecio',
   'dorsales', 'lumbares', 'gluteos', 'cuadriceps', 'isquiotibiales', 'gemelos'];
 export const OBJETIVOS = ['fuerza', 'hipertrofia', 'resistencia', 'perdida-grasa'];
@@ -18,6 +19,17 @@ export const COLECCIONES = {
       correo: { bsonType: 'string', maxLength: 254, pattern: '^[^\\s@A-Z]+@[^\\s@A-Z]+\\.[^\\s@A-Z]+$' },
       passwordHash: { bsonType: 'string', pattern: '^scrypt\\$' },
       rol: { enum: ['cliente', 'admin'] },
+      // Datos editables desde "Editar perfil" (opcionales).
+      telefono: { bsonType: 'string', pattern: '^\\+?[0-9 ]{7,20}$' },
+      objetivo: { enum: OBJETIVOS },
+      // Foto de perfil: el archivo vive en GridFS (bucket `fotos`); aquí solo su referencia.
+      foto: objeto(['archivoId', 'url', 'tipo', 'tamano', 'subidaAt'], {
+        archivoId: { bsonType: 'objectId' },
+        url: texto(1, 200),
+        tipo: { enum: TIPOS_FOTO },
+        tamano: entero(1, MAX_FOTO),
+        subidaAt: fecha,
+      }),
       createdAt: fecha,
       updatedAt: fecha,
     }),
