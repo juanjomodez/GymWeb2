@@ -1,7 +1,9 @@
 // Rutas de la API para membresías, entrenadores, reservas, rutinas, tienda y máquinas.
 // Toda entrada se valida aquí; las reglas de negocio viven en database.js.
+import { pipeline } from 'node:stream/promises';
+import multer from 'multer';
 import { ErrorNegocio, MESES_VALIDOS } from './database.js';
-import { OBJETIVOS } from './esquema.js';
+import { MAX_FOTO, OBJETIVOS, TIPOS_FOTO } from './esquema.js';
 
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const esSlug = valor => typeof valor === 'string' && valor.length <= 60 && SLUG.test(valor);
@@ -20,6 +22,24 @@ const manejar = fn => async (request, response) => {
 const invalido = (response, message) => response.status(400).json({ message });
 // El catálogo cambia poco: el navegador puede reutilizarlo un minuto.
 const publico = response => response.set('Cache-Control', 'public, max-age=60');
+
+// Subida de la foto de perfil (multipart/form-data, campo `foto`). Se guarda en memoria
+// (máx. 2 MB) y database.js la persiste en GridFS; nunca se escribe en el disco del servidor.
+const subirFoto = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_FOTO, files: 1, fields: 0, parts: 1 } }).single('foto');
+const recibirFoto = (req, res, next) => subirFoto(req, res, error => {
+  if (!error) return next();
+  if (error.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ message: 'La foto no puede pesar más de 2 MB.' });
+  if (error instanceof multer.MulterError) return invalido(res, 'Envía una sola imagen en el campo "foto".');
+  invalido(res, 'No se pudo leer el archivo enviado.');
+});
+// Tipo real según los primeros bytes (no se confía en el nombre ni en el tipo que declara el navegador).
+function tipoImagen(buffer) {
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
+  if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+  if (buffer.length >= 12 && buffer.toString('ascii', 0, 4) === 'RIFF' && buffer.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  return null;
+}
+const TELEFONO = /^\+?[0-9 ]{7,20}$/;
 
 export function setupApi(app, database, requireUser) {
   // ---------- catálogo público ----------
@@ -58,6 +78,48 @@ export function setupApi(app, database, requireUser) {
     if (!esSlug(req.params.id)) return res.status(404).json({ message: 'Entrenador no encontrado.' });
     if (!esFecha(fecha)) return invalido(res, 'Indica la fecha como AAAA-MM-DD.');
     res.json({ fecha, horarios: await database.disponibilidad(req.params.id, fecha) });
+  }));
+
+  // ---------- perfil ----------
+  app.get('/api/perfil', requireUser, manejar(async (req, res) => {
+    res.json({ perfil: await database.obtenerPerfil(req.user.id) });
+  }));
+  app.patch('/api/perfil', requireUser, manejar(async (req, res) => {
+    const { nombre, telefono, objetivo } = req.body ?? {};
+    const cambios = {};
+    if (nombre !== undefined) {
+      if (typeof nombre !== 'string' || nombre.trim().length < 2 || nombre.trim().length > 100) return invalido(res, 'El nombre debe tener entre 2 y 100 caracteres.');
+      cambios.nombre = nombre.trim();
+    }
+    if (telefono !== undefined) {
+      if (typeof telefono !== 'string' || (telefono.trim() !== '' && !TELEFONO.test(telefono.trim()))) return invalido(res, 'El teléfono debe tener de 7 a 20 dígitos (puede empezar con +).');
+      cambios.telefono = telefono.trim();
+    }
+    if (objetivo !== undefined) {
+      if (objetivo !== '' && !OBJETIVOS.includes(objetivo)) return invalido(res, `Objetivo inválido. Usa: ${OBJETIVOS.join(', ')}.`);
+      cambios.objetivo = objetivo;
+    }
+    if (!Object.keys(cambios).length) return invalido(res, 'No hay cambios para guardar.');
+    res.json({ message: 'Perfil actualizado.', perfil: await database.actualizarPerfil(req.user.id, cambios) });
+  }));
+  app.post('/api/perfil/foto', requireUser, recibirFoto, manejar(async (req, res) => {
+    if (!req.file) return invalido(res, 'Selecciona una imagen en el campo "foto".');
+    const tipo = tipoImagen(req.file.buffer);
+    if (!tipo || !TIPOS_FOTO.includes(tipo)) return res.status(415).json({ message: 'Formato no permitido. Usa JPG, PNG o WebP.' });
+    const perfil = await database.guardarFotoPerfil(req.user.id, { buffer: req.file.buffer, tipo });
+    res.status(201).json({ message: 'Foto de perfil actualizada.', perfil });
+  }));
+  app.delete('/api/perfil/foto', requireUser, manejar(async (req, res) => {
+    await database.eliminarFotoPerfil(req.user.id);
+    res.json({ message: 'Foto de perfil eliminada.' });
+  }));
+  // Cada subida crea un archivo con id nuevo: el navegador puede guardarlo en caché sin límite.
+  app.get('/api/fotos/:id', manejar(async (req, res) => {
+    const foto = /^[a-f0-9]{24}$/.test(req.params.id) ? await database.abrirFoto(req.params.id) : null;
+    if (!foto) return res.status(404).json({ message: 'Foto no encontrada.' });
+    res.set({ 'Content-Type': foto.tipo, 'Content-Length': String(foto.tamano), 'Cache-Control': 'public, max-age=31536000, immutable', 'Content-Security-Policy': "default-src 'none'" });
+    // Si falla a mitad de envío ya no se puede responder con JSON: se corta la conexión.
+    await pipeline(foto.stream, res).catch(() => res.destroy());
   }));
 
   // ---------- membresía ----------
