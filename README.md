@@ -1,6 +1,11 @@
 Nombre del proyecto: Gym Flow
 Integrantes: Juan Jose Mosquera Bermudez - Santiago Lopez Gomez - Alejandro Pantoja Obando - Jesus David Albarracin Ortega - Yeferson David Casso Ruiz
 
+Aclaracion
+Este repositorio es distinto al de la entrega pasada, eso se debe a que tuvimos un problema con las ramas y al final el archivo final entregado no correspondia a todo lo que teniamos realizado en el archivo, y como todas las ramas escepto 1 ya habian hecho push con el cambio mas reciente, entonces decidimos trabajar de nuevo desde la base de la unica rama que no hizo push y tenia los cambios que queriamos con los modelos 3D, de igual forma aca esta el enlace al repositorio anterior por si es necesario acceder para visualizar nuestros cambios antiguos
+
+https://github.com/juanjomodez/GymWeb
+
 Definición del problema:
 Muchos gimnasios todavia gestionan procesos como la inscripción de usuarios, la compra de membresias, 
 la reserva de entrenadores y la consulta de rutinas de manera presencial o mediante diferentes plataformas, 
