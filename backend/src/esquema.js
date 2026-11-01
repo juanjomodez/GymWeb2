@@ -223,4 +223,7 @@ export async function asegurarEsquema(db) {
     else await db.createCollection(nombre, validacion);
     for (const [clave, opciones] of indices) await db.collection(nombre).createIndex(clave, opciones);
   }
+  // GridFS administra sus colecciones e índices internos. Este índice permite buscar las fotos de un usuario.
+  // No es único: al reemplazar una foto se guarda primero la nueva y después se elimina la anterior.
+  await db.collection('fotos.files').createIndex({ 'metadata.usuarioId': 1 }, { name: 'fotos_por_usuario' });
 }

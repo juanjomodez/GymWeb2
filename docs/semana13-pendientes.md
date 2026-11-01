@@ -8,6 +8,10 @@
 - `GET/PATCH /api/perfil` para editar nombre, teléfono y objetivo. `DELETE /api/perfil/foto` para quitarla.
 - La foto aparece junto al saludo de "Mi cuenta".
 - Pruebas HTTP sin MongoDB en `backend/test/perfil.test.js` (pasan con `npm test`).
+- Documentación completa de rutas, acceso, entradas, respuestas y códigos en [API.md](API.md).
+- Sección de semana 13 en [README del backend](../backend/README.md).
+- Índice `fotos_por_usuario` en `fotos.files`, sobre `metadata.usuarioId`, creado desde
+  `backend/src/esquema.js`; la prueba de esquema comprueba su clave y preparación idempotente.
 
 Archivos tocados: `backend/src/api.js`, `backend/src/database.js`, `backend/src/esquema.js`,
 `backend/package.json` (+ `multer`), `micuenta.html`, `js/cuenta.js`, `cuenta.css`, `backend/README.md`.
@@ -43,8 +47,9 @@ Falta (necesita MongoDB en memoria, como `test/api.test.js`):
 4. El validador rechaza un `telefono` inválido insertado directo en la colección (código 121).
 5. Prueba manual en el navegador: subir JPG, PNG y WebP; probar un PDF renombrado a .jpg.
 
-Nota: esas pruebas de integración no se pudieron ejecutar en el entorno donde se programó esto
-(no deja descargar el binario de MongoDB), así que conviene correr `npm test` completo en un PC del equipo.
+Estos casos de integración de fotos siguen pendientes. La suite existente sí usa
+MongoDB temporal para las demás funciones y para comprobar el índice de metadatos.
+La primera ejecución puede necesitar descargar el binario de MongoDB.
 
 ## Para quien pule la interfaz
 
