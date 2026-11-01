@@ -3,3 +3,6 @@ node_modules/
 .env.*
 !.env.example
 npm-debug.log*
+
+# Capturas, videos y material de presentación generados localmente
+capturas/
