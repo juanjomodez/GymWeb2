@@ -43,6 +43,7 @@ async function nuevaCuenta(correo) {
   };
   assert.equal((await pedir('/api/usuarios', { metodo: 'POST', cuerpo: { nombre: 'Prueba', correo, password: 'clave-segura-1' } })).status, 201);
   assert.equal((await pedir('/api/login', { metodo: 'POST', cuerpo: { correo, password: 'clave-segura-1' } })).status, 200);
+  pedir.cookie = () => cookie;
   return pedir;
 }
 
@@ -184,4 +185,73 @@ test('carrito persistente y pedido transaccional con control de stock', async ()
   assert.equal((await pedir('/api/pedidos', { metodo: 'POST' })).status, 409);
   assert.equal((await db.collection('productos').findOne({ _id: 'shaker' })).stock, shakerAntes);
   assert.equal((await pedir('/api/carrito')).body.items.length, 2);
+
+const RUTA_FOTO = '/api/perfil/foto';
+const CAMPO_FOTO = 'foto';
+
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64'
+);
+
+async function subirFoto(cookie, nombre) {
+  const form = new FormData();
+  form.append(CAMPO_FOTO, new Blob([PNG], { type: 'image/png' }), nombre);
+  const r = await fetch(base + RUTA_FOTO, { method: 'POST', headers: cookie ? { Cookie: cookie } : {}, body: form });
+  return r.status;
+}
+
+async function borrarFoto(cookie) {
+  const r = await fetch(base + RUTA_FOTO, { method: 'DELETE', headers: { Cookie: cookie } });
+  return r.status;
+}
+
+const archivosFoto = () => db.collection('fotos.files').find().toArray();
+const usuarioPorCorreo = correo => db.collection('usuarios').findOne({ correo });
+
+test('foto de perfil: la subida se guarda en fotos.files y queda ligada al usuario', async () => {
+  const pedir = await nuevaCuenta('foto1@example.com');
+  const antes = (await archivosFoto()).length;
+
+  assert.equal(await subirFoto(pedir.cookie(), 'a.png'), 201);
+
+  const archivos = await archivosFoto();
+  assert.equal(archivos.length, antes + 1);
+  const usuario = await usuarioPorCorreo('foto1@example.com');
+  assert.ok(usuario.foto?.archivoId, 'el usuario debe guardar la referencia a la foto');
+  assert.ok(archivos.some(a => String(a._id) === String(usuario.foto.archivoId)));
+  assert.equal(usuario.foto.tipo, 'image/png');
+});
+
+test('foto de perfil: al subir otra se borra la anterior', async () => {
+  const pedir = await nuevaCuenta('foto2@example.com');
+  await subirFoto(pedir.cookie(), 'a.png');
+  const primera = (await usuarioPorCorreo('foto2@example.com')).foto.archivoId;
+  const total = (await archivosFoto()).length;
+
+  assert.equal(await subirFoto(pedir.cookie(), 'b.png'), 201);
+
+  const segunda = (await usuarioPorCorreo('foto2@example.com')).foto.archivoId;
+  assert.notEqual(String(segunda), String(primera));
+  const archivos = await archivosFoto();
+  assert.equal(archivos.length, total, 'debe quedar el mismo número de archivos');
+  assert.equal(archivos.some(a => String(a._id) === String(primera)), false, 'la foto anterior debe desaparecer');
+});
+
+test('foto de perfil: DELETE elimina la foto del usuario y de fotos.files', async () => {
+  const pedir = await nuevaCuenta('foto3@example.com');
+  await subirFoto(pedir.cookie(), 'a.png');
+  const id = (await usuarioPorCorreo('foto3@example.com')).foto.archivoId;
+
+  assert.equal(await borrarFoto(pedir.cookie()), 200);
+
+  assert.equal((await usuarioPorCorreo('foto3@example.com')).foto, undefined);
+  assert.equal((await archivosFoto()).some(a => String(a._id) === String(id)), false);
+  const r = await fetch(`${base}/api/fotos/${id}`);
+  assert.equal(r.status, 404);
+});
+
+test('foto de perfil: sin sesión no se puede subir', async () => {
+  assert.equal(await subirFoto('', 'a.png'), 401);
+});
 });
