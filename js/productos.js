@@ -109,6 +109,7 @@ export function crearVitrina(canvas, slots) {
         borde.position.set(-.4, .3, -.35);
         escena.add(clave, borde);
         const modelo = crear();
+        slot.closest("article")?.classList.add("producto-con-modelo");
         const caja = new THREE.Box3().setFromObject(modelo);
         const alto = caja.max.y - caja.min.y;
         modelo.position.y = -caja.min.y - alto / 2;

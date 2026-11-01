@@ -30,10 +30,13 @@
 
     <main id="mi-cuenta" class="cuenta">
         <div class="cuenta-cabecera">
-            <div>
-                <p class="kicker">Mi cuenta</p>
-                <h1>Hola, <span id="cuenta-nombre">…</span></h1>
-                <p class="cuenta-correo" id="cuenta-correo"></p>
+            <div class="cuenta-identidad">
+                <img id="cuenta-avatar" class="avatar" src="img/logo.png" alt="" width="72" height="72" hidden>
+                <div>
+                    <p class="kicker">Mi cuenta</p>
+                    <h1>Hola, <span id="cuenta-nombre">…</span></h1>
+                    <p class="cuenta-correo" id="cuenta-correo"></p>
+                </div>
             </div>
             <button type="button" id="cerrar-sesion" class="boton-fantasma">Cerrar sesión</button>
         </div>
@@ -44,6 +47,7 @@
             <button type="button" role="tab" id="pestana-reservas" aria-controls="reservas" data-panel="reservas">Entrenadores</button>
             <button type="button" role="tab" id="pestana-rutinas" aria-controls="rutinas" data-panel="rutinas">Rutinas</button>
             <button type="button" role="tab" id="pestana-pedidos" aria-controls="pedidos" data-panel="pedidos">Mis compras</button>
+            <button type="button" role="tab" id="pestana-perfil" aria-controls="perfil" data-panel="perfil">Editar perfil</button>
         </nav>
 
         <!-- MEMBRESÍA -->
@@ -106,6 +110,56 @@
         <section id="pedidos" class="cuenta-panel" role="tabpanel" aria-labelledby="pestana-pedidos" hidden>
             <ul class="lista-pedidos"></ul>
             <a class="boton" href="index.html#productos">Ir a la tienda</a>
+        </section>
+
+        <!-- EDITAR PERFIL (interfaz básica: pendiente de pulir el diseño) -->
+        <section id="perfil" class="cuenta-panel" role="tabpanel" aria-labelledby="pestana-perfil" hidden>
+            <article class="tarjeta">
+                <h2>Foto de perfil</h2>
+                <form class="form-foto" enctype="multipart/form-data">
+                    <img class="avatar avatar-grande" id="perfil-foto" src="img/logo.png" alt="Tu foto de perfil" width="140" height="140">
+                    <div class="campo">
+                        <label for="perfil-archivo">Elegir imagen</label>
+                        <input type="file" id="perfil-archivo" name="foto" accept="image/jpeg,image/png,image/webp" required>
+                        <p class="cuenta-nota">JPG, PNG o WebP, máximo 2 MB.</p>
+                    </div>
+                    <div class="dialogo-acciones">
+                        <button type="button" class="boton-fantasma" id="perfil-quitar-foto" hidden>Quitar foto</button>
+                        <button type="submit" class="boton">Subir foto</button>
+                    </div>
+                    <p class="aviso" role="status" aria-live="polite"></p>
+                </form>
+            </article>
+
+            <article class="tarjeta">
+                <h2>Mis datos</h2>
+                <form class="form-perfil">
+                    <div class="campo">
+                        <label for="perfil-nombre">Nombre</label>
+                        <input type="text" id="perfil-nombre" name="nombre" minlength="2" maxlength="100" required autocomplete="name">
+                    </div>
+                    <div class="campo">
+                        <label for="perfil-correo">Correo</label>
+                        <input type="email" id="perfil-correo" readonly>
+                    </div>
+                    <div class="campo">
+                        <label for="perfil-telefono">Teléfono</label>
+                        <input type="tel" id="perfil-telefono" name="telefono" maxlength="20" pattern="\+?[0-9 ]{7,20}" autocomplete="tel" placeholder="+57 300 000 0000">
+                    </div>
+                    <div class="campo">
+                        <label for="perfil-objetivo">Objetivo</label>
+                        <select id="perfil-objetivo" name="objetivo">
+                            <option value="">Sin definir</option>
+                            <option value="fuerza">Fuerza</option>
+                            <option value="hipertrofia">Hipertrofia</option>
+                            <option value="resistencia">Resistencia</option>
+                            <option value="perdida-grasa">Pérdida de grasa</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="boton">Guardar cambios</button>
+                    <p class="aviso" role="status" aria-live="polite"></p>
+                </form>
+            </article>
         </section>
     </main>
 

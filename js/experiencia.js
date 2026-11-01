@@ -85,6 +85,8 @@ export async function iniciarExperiencia({ recorrido }) {
     escena.environmentIntensity = recursos.hdri ? .45 : .3;
     recursos.hdri?.dispose();
 
+    // Las tarjetas se crean desde la API; evita leer precios vacíos o perder sus slots 3D.
+    await window.catalogoPortadaListo;
     const gym = construirGimnasio({ calidad, recursos, ...leerContenido() });
     escena.add(gym.escena);
     performance.mark("gym:construido");

@@ -1,17 +1,138 @@
 "use strict";
 
-document.addEventListener("DOMContentLoaded", () => {
-    setupMobileMenu();
-    setupScrollAnimations();
-    setupSessionLinks();
-    setupMembershipActions();
-    setupTrainerActions();
-    setupMachineSheetCta();
-    setupProductCart();
-    setupAuthForms();
+// La escena 3D espera al catálogo antes de leer las tarjetas y sus precios.
+window.catalogoPortadaListo = new Promise((resolve) => {
+    document.addEventListener("DOMContentLoaded", () => {
+        setupMobileMenu();
+        setupScrollAnimations();
+        setupSessionLinks();
+        setupMachineSheetCta();
+        setupAuthForms();
+        resolve(setupHomeCatalogs());
+    });
 });
 
 const servidorDisponible = window.location.protocol !== "file:";
+const monedaPortada = new Intl.NumberFormat("es-CO", {
+    style: "currency", currency: "COP", maximumFractionDigits: 0
+});
+
+function catalogElement(tag, text, className) {
+    const element = document.createElement(tag);
+    if (text !== undefined) element.textContent = text;
+    if (className) element.className = className;
+    return element;
+}
+
+function catalogImage(src, alt) {
+    const image = catalogElement("img");
+    image.src = src;
+    image.alt = alt;
+    image.loading = "lazy";
+    image.decoding = "async";
+    return image;
+}
+
+function renderPlans(planes) {
+    // Conserva las tres tarjetas: las dos modalidades Premium comparten tarjeta.
+    const premium = planes.find((plan) => plan.id === "premium");
+    const familiar = premium && planes.find((plan) => plan.id === "premium-familiar");
+    return planes.filter((plan) => plan !== familiar).map((plan) => {
+        const card = catalogElement("article");
+        card.dataset.plan = plan.id;
+        if (plan.id === "familiar") card.className = "plan-destacado";
+        const benefits = catalogElement("ul");
+        benefits.append(...plan.beneficios.map((benefit) => catalogElement("li", benefit)));
+        const priceBox = catalogElement("div", undefined, "precio");
+        const addPrice = (option, label) => {
+            priceBox.append(
+                catalogElement("p", label, "tipo-precio"),
+                catalogElement("p", `${monedaPortada.format(option.precioMensual)} / mes${option.maxPersonas > 1 ? `, máximo ${option.maxPersonas} personas` : ""}`, "valor-precio")
+            );
+        };
+        addPrice(plan, plan === premium && familiar ? "Precio individual" : "Precio");
+        if (plan === premium && familiar) {
+            card.dataset.planFamiliar = familiar.id;
+            addPrice(familiar, "Precio familiar");
+        }
+        card.append(catalogElement("h3", plan.nombre), catalogElement("p", plan.descripcion), benefits, priceBox);
+        return card;
+    });
+}
+
+function renderTrainers(entrenadores) {
+    return entrenadores.map((trainer) => {
+        const card = catalogElement("article");
+        const image = catalogImage(trainer.imagen, trainer.nombre);
+        image.dataset.entrenador = trainer.id;
+        card.append(
+            image, catalogElement("h3", trainer.nombre), catalogElement("p", trainer.especialidad),
+            catalogElement("p", trainer.descripcion), catalogElement("span", trainer.zona, "zona-entrenador")
+        );
+        return card;
+    });
+}
+
+function renderProducts(productos) {
+    return productos.map((product) => {
+        const card = catalogElement("article");
+        card.dataset.productoId = product.id;
+        const slot = catalogElement("div", undefined, "producto-3d");
+        slot.dataset.producto = product.id;
+        slot.setAttribute("aria-hidden", "true");
+        const button = catalogElement("button", product.stock > 0 ? "Agregar al carrito" : "Agotado");
+        button.type = "button";
+        button.disabled = product.stock <= 0;
+        card.append(
+            slot, catalogImage(product.imagen, product.nombre), catalogElement("h3", product.nombre),
+            catalogElement("p", product.descripcion), catalogElement("p", monedaPortada.format(product.precio)), button
+        );
+        return card;
+    });
+}
+
+function setupHomeCatalogs() {
+    const catalogs = [
+        { id: "planes", render: renderPlans, ready: setupMembershipActions },
+        { id: "entrenadores", render: renderTrainers, ready: setupTrainerActions },
+        { id: "productos", render: renderProducts, ready: setupProductCart }
+    ];
+    // Cada sección termina de forma independiente: un fallo no oculta las demás.
+    return Promise.allSettled(catalogs.map(async ({ id, render, ready }) => {
+        const section = document.getElementById(id);
+        const container = section?.querySelector("[data-catalogo]");
+        if (!container) return;
+        const status = section.querySelector("[data-estado-catalogo]");
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 10000);
+        try {
+            if (!servidorDisponible) throw new Error("sin-servidor");
+            // Evita mostrar durante un minuto los precios anteriores del catálogo.
+            const response = await fetch(`/api/${id}`, { cache: "no-store", signal: controller.signal });
+            if (!response.ok) throw new Error("catalogo-no-disponible");
+            const result = await response.json();
+            const items = result[id];
+            if (!Array.isArray(items)) throw new Error("catalogo-invalido");
+            container.replaceChildren(...render(items));
+            ready(items);
+            status.textContent = items.length ? "" : `No hay ${id} disponibles por el momento.`;
+            status.hidden = items.length > 0;
+            setupScrollAnimations(section);
+        } catch {
+            status.textContent = servidorDisponible
+                ? `No se pudieron cargar los ${id}. `
+                : "Abre la página desde el servidor del proyecto para consultar el catálogo. ";
+            const retry = catalogElement("button", "Volver a cargar", "boton-fantasma");
+            retry.type = "button";
+            retry.addEventListener("click", () => window.location.reload());
+            status.append(retry);
+            status.hidden = false;
+        } finally {
+            window.clearTimeout(timeout);
+            container.setAttribute("aria-busy", "false");
+        }
+    }));
+}
 
 // Una sola consulta de sesión por página; sin servidor (file://) se asume visitante.
 let sessionPromise;
@@ -46,7 +167,7 @@ function setupMobileMenu() {
     });
 }
 
-function setupScrollAnimations() {
+function setupScrollAnimations(root = document) {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
     const groups = [
@@ -59,8 +180,8 @@ function setupScrollAnimations() {
     const elements = new Set();
 
     groups.forEach(({ selector, stagger }) => {
-        document.querySelectorAll(selector).forEach((element, index) => {
-            if (elements.has(element)) return;
+        root.querySelectorAll(selector).forEach((element, index) => {
+            if (elements.has(element) || element.classList.contains("animar-entrada")) return;
             elements.add(element);
             element.classList.add("animar-entrada");
             if (stagger) element.style.setProperty("--retraso-entrada", `${(index % 4) * 90}ms`);
@@ -158,19 +279,12 @@ function writeLocalCart(items) {
     } catch { /* almacenamiento bloqueado: el carrito vive solo en esta página */ }
 }
 
-function setupProductCart() {
+function setupProductCart(productos) {
     const productSection = document.querySelector("#productos");
     if (!productSection) return;
 
-    // Catálogo leído de las tarjetas: id → nombre, precio e imagen.
-    const catalog = new Map();
-    productSection.querySelectorAll("article[data-producto-id]").forEach((card) => {
-        catalog.set(card.dataset.productoId, {
-            nombre: card.querySelector("h3")?.textContent.trim() ?? "",
-            precio: Number(card.querySelector("p:nth-of-type(2)")?.textContent.replace(/\D/g, "")),
-            imagen: card.querySelector("img")?.getAttribute("src") ?? ""
-        });
-    });
+    // Tarjetas y carrito usan los mismos datos de la API, sin interpretar texto del HTML.
+    const catalog = new Map(productos.map((product) => [product.id, product]));
 
     const cart = new Map();
     let loggedIn = false;
@@ -341,7 +455,7 @@ function setupProductCart() {
         const button = event.target.closest("button");
         const id = button?.closest("article[data-producto-id]")?.dataset.productoId;
         const product = catalog.get(id);
-        if (!product || !Number.isFinite(product.precio)) return;
+        if (!product || button.disabled || product.stock <= 0 || !Number.isFinite(product.precio)) return;
 
         const currentItem = cart.get(id);
         cart.set(id, {

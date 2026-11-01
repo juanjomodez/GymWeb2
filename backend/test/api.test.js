@@ -6,6 +6,7 @@ import { MongoClient } from 'mongodb';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { createApp } from '../src/app.js';
 import { createDatabase } from '../src/database.js';
+import { asegurarEsquema } from '../src/esquema.js';
 
 let replica, database, server, base, cliente, db;
 
@@ -61,6 +62,14 @@ test('esquema: colecciones con validador, índices clave y catálogo sembrado', 
   const indices = (await db.collection('reservas').indexes()).map(i => i.name);
   assert.ok(indices.includes('horario_entrenador_unico'));
   assert.ok((await db.collection('membresias').indexes()).some(i => i.name === 'una_activa_por_usuario' && i.unique));
+  // El índice de fotos existe antes de la primera subida y se conserva al repetir la preparación.
+  await asegurarEsquema(db);
+  const indicesFotos = await db.collection('fotos.files').indexes();
+  const fotosPorUsuario = indicesFotos.find(i => i.name === 'fotos_por_usuario');
+  assert.ok(fotosPorUsuario);
+  assert.deepEqual(fotosPorUsuario.key, { 'metadata.usuarioId': 1 });
+  assert.equal(Boolean(fotosPorUsuario.unique), false);
+  assert.equal(indicesFotos.filter(i => i.name === 'fotos_por_usuario').length, 1);
   assert.equal(await db.collection('planes').countDocuments(), 4);
   assert.equal(await db.collection('maquinas').countDocuments(), 10);
   await assert.rejects(db.collection('productos').insertOne({ _id: 'malo', nombre: 'X', precio: -5 }), { code: 121 });

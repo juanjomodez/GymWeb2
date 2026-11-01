@@ -702,7 +702,7 @@
     font-weight: 750;
 }
 
-.con-3d .producto-3d {
+.con-3d .producto-con-modelo .producto-3d {
     display: block;
     height: 230px;
     margin-bottom: 20px;
@@ -710,7 +710,7 @@
     background: radial-gradient(ellipse at 50% 80%, rgba(237, 28, 36, .2), transparent 62%);
 }
 
-.con-3d #productos article img {
+.con-3d #productos article.producto-con-modelo img {
     display: none;
 }
 

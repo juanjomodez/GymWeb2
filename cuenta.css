@@ -574,3 +574,55 @@
         font-size: .8rem;
     }
 }
+
+/* Editar perfil (interfaz básica, pendiente de pulir). */
+.cuenta-identidad {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+}
+
+.avatar {
+    width: 72px;
+    height: 72px;
+    border: 2px solid var(--line);
+    border-radius: 50%;
+    object-fit: cover;
+    background: #101012;
+}
+
+.avatar-grande {
+    width: 140px;
+    height: 140px;
+}
+
+#perfil .tarjeta + .tarjeta {
+    margin-top: 22px;
+}
+
+.form-foto,
+.form-perfil {
+    display: grid;
+    gap: 18px;
+    margin-top: 18px;
+}
+
+.form-perfil {
+    grid-template-columns: 1fr 1fr;
+}
+
+.form-perfil>.boton,
+.form-perfil>.aviso {
+    grid-column: 1 / -1;
+    justify-self: start;
+}
+
+.campo input[readonly] {
+    opacity: .7;
+}
+
+@media (max-width: 640px) {
+    .form-perfil {
+        grid-template-columns: 1fr;
+    }
+}

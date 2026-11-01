@@ -388,6 +388,93 @@ cargadores.pedidos = async () => {
     )) : [el("li", { clase: "vacio", texto: "Aún no has hecho compras en la tienda." })]));
 };
 
+// ---------- editar perfil y foto ----------
+// La foto se envía como multipart/form-data (FormData) a POST /api/perfil/foto.
+const formFoto = $(".form-foto");
+const formPerfil = $(".form-perfil");
+const inputFoto = $("#perfil-archivo");
+const botonQuitarFoto = $("#perfil-quitar-foto");
+const MAX_FOTO = 2 * 1024 * 1024;
+
+function pintarFoto(url) {
+    const avatar = $("#cuenta-avatar");
+    avatar.hidden = !url;
+    if (url) avatar.src = url;
+    $("#perfil-foto").src = url || "img/logo.png";
+    botonQuitarFoto.hidden = !url;
+}
+
+function pintarPerfil(p) {
+    $("#cuenta-nombre").textContent = p.nombre.split(" ")[0];
+    $("#perfil-nombre").value = p.nombre;
+    $("#perfil-correo").value = p.correo;
+    $("#perfil-telefono").value = p.telefono;
+    $("#perfil-objetivo").value = p.objetivo;
+    pintarFoto(p.fotoUrl);
+}
+
+inputFoto.addEventListener("change", () => {
+    const archivo = inputFoto.files[0];
+    if (archivo) $("#perfil-foto").src = URL.createObjectURL(archivo);
+});
+
+formFoto.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const aviso = $(".aviso", formFoto);
+    const archivo = inputFoto.files[0];
+    if (!archivo) return avisar(aviso, "Elige una imagen primero.", "error");
+    if (archivo.size > MAX_FOTO) return avisar(aviso, "La foto no puede pesar más de 2 MB.", "error");
+    const datos = new FormData();
+    datos.append("foto", archivo);
+    const boton = $("button[type=submit]", formFoto);
+    boton.disabled = true;
+    avisar(aviso, "Subiendo…");
+    let r;
+    try {
+        // Sin Content-Type: el navegador añade multipart/form-data con su boundary.
+        const respuesta = await fetch("/api/perfil/foto", { method: "POST", body: datos, cache: "no-store" });
+        if (respuesta.status === 401) return location.replace(`login.html?volver=${encodeURIComponent(location.pathname + "#perfil")}`);
+        r = { ok: respuesta.ok, body: await respuesta.json().catch(() => ({})) };
+    } catch {
+        r = { ok: false, body: { message: "No se pudo contactar con el servidor." } };
+    }
+    boton.disabled = false;
+    avisar(aviso, r.body.message ?? "No se pudo subir la foto.", r.ok ? "exito" : "error");
+    if (r.ok) {
+        formFoto.reset();
+        pintarPerfil(r.body.perfil);
+    }
+});
+
+botonQuitarFoto.addEventListener("click", async () => {
+    const aviso = $(".aviso", formFoto);
+    botonQuitarFoto.disabled = true;
+    const r = await api("/api/perfil/foto", { metodo: "DELETE" });
+    botonQuitarFoto.disabled = false;
+    avisar(aviso, r.body.message ?? "No se pudo quitar la foto.", r.ok ? "exito" : "error");
+    if (r.ok) pintarFoto(null);
+});
+
+formPerfil.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const aviso = $(".aviso", formPerfil);
+    const boton = $("button[type=submit]", formPerfil);
+    boton.disabled = true;
+    const r = await api("/api/perfil", {
+        metodo: "PATCH",
+        cuerpo: { nombre: $("#perfil-nombre").value, telefono: $("#perfil-telefono").value, objetivo: $("#perfil-objetivo").value }
+    });
+    boton.disabled = false;
+    avisar(aviso, r.body.message ?? "No se pudo guardar.", r.ok ? "exito" : "error");
+    if (r.ok) pintarPerfil(r.body.perfil);
+});
+
+cargadores.perfil = async () => {
+    const r = await api("/api/perfil");
+    if (r.ok) pintarPerfil(r.body.perfil);
+    else avisar($(".aviso", formPerfil), "No se pudo cargar tu perfil.", "error");
+};
+
 // ---------- sesión ----------
 const botonSalir = $("#cerrar-sesion");
 botonSalir.addEventListener("click", async () => {
@@ -405,6 +492,7 @@ botonSalir.addEventListener("click", async () => {
     if (r.ok) {
         $("#cuenta-nombre").textContent = r.body.usuario.nombre.split(" ")[0];
         $("#cuenta-correo").textContent = r.body.usuario.correo;
+        pintarFoto(r.body.usuario.fotoUrl ?? null);
     } else {
         avisar(mensajeGeneral, "No se pudo cargar tu cuenta. Intenta recargar la página.", "error");
     }

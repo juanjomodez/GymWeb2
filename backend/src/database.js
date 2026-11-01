@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { MongoClient, ObjectId } from 'mongodb';
+import { GridFSBucket, MongoClient, ObjectId } from 'mongodb';
 import { asegurarEsquema } from './esquema.js';
 import { sembrarCatalogo } from './catalogo.js';
 
@@ -37,6 +37,16 @@ const diaIso = fecha => new Date(`${fecha}T12:00:00-05:00`).getUTCDay() || 7;
 const local = d => new Date(d.getTime() - DESFASE_CALI);
 const fechaLocal = d => local(d).toISOString().slice(0, 10);
 const horaLocal = d => local(d).toISOString().slice(11, 16);
+
+// Datos del perfil que puede ver y editar su dueño (nunca el hash de la contraseña).
+function publicoPerfil(u) {
+  if (!u) return null;
+  return {
+    id: u._id.toString(), nombre: u.nombre, correo: u.correo,
+    telefono: u.telefono ?? '', objetivo: u.objetivo ?? '', fotoUrl: u.foto?.url ?? null,
+  };
+}
+const PROYECCION_PERFIL = { nombre: 1, correo: 1, telefono: 1, objetivo: 1, foto: 1 };
 
 function publicaMembresia(m) {
   if (!m) return null;
@@ -130,11 +140,75 @@ export function createDatabase({ uri, database }) {
       const session = await base.collection('sesiones').findOne({ _id: tokenHash, expiresAt: { $gt: new Date() } });
       const userId = session && comoId(session.userId);
       if (!userId) return null;
-      const user = await base.collection('usuarios').findOne({ _id: userId }, { projection: { nombre: 1, correo: 1, rol: 1 } });
-      return user ? { id: user._id.toString(), nombre: user.nombre, correo: user.correo, rol: user.rol ?? 'cliente' } : null;
+      const user = await base.collection('usuarios').findOne({ _id: userId }, { projection: { nombre: 1, correo: 1, rol: 1, 'foto.url': 1 } });
+      return user ? { id: user._id.toString(), nombre: user.nombre, correo: user.correo, rol: user.rol ?? 'cliente', fotoUrl: user.foto?.url ?? null } : null;
     },
     async deleteSession(tokenHash) {
       await (await db()).collection('sesiones').deleteOne({ _id: tokenHash });
+    },
+
+    // ---------- perfil y foto de perfil ----------
+    async obtenerPerfil(usuario) {
+      const u = await (await db()).collection('usuarios').findOne({ _id: comoId(usuario) }, { projection: PROYECCION_PERFIL });
+      return publicoPerfil(u);
+    },
+    // `cambios`: { nombre?, telefono?, objetivo? } ya validados; '' en telefono/objetivo los borra.
+    async actualizarPerfil(usuario, cambios) {
+      const $set = { updatedAt: new Date() };
+      const $unset = {};
+      for (const [campo, valor] of Object.entries(cambios)) {
+        if (valor === '') $unset[campo] = '';
+        else $set[campo] = valor;
+      }
+      const u = await (await db()).collection('usuarios').findOneAndUpdate(
+        { _id: comoId(usuario) },
+        { $set, ...(Object.keys($unset).length ? { $unset } : {}) },
+        { returnDocument: 'after', projection: PROYECCION_PERFIL },
+      );
+      return publicoPerfil(u);
+    },
+    // Guarda el archivo en GridFS (bucket `fotos`) y su referencia en el usuario; borra la foto anterior.
+    async guardarFotoPerfil(usuario, { buffer, tipo }) {
+      const base = await db();
+      const usuarioId = comoId(usuario);
+      const bucket = new GridFSBucket(base, { bucketName: 'fotos' });
+      const archivoId = new ObjectId();
+      await new Promise((resolve, reject) => {
+        bucket.openUploadStreamWithId(archivoId, `perfil-${usuarioId}`, { contentType: tipo, metadata: { usuarioId, tipo } })
+          .on('finish', resolve).on('error', reject).end(buffer);
+      });
+      const foto = { archivoId, url: `/api/fotos/${archivoId}`, tipo, tamano: buffer.length, subidaAt: new Date() };
+      let anterior;
+      try {
+        anterior = await base.collection('usuarios').findOneAndUpdate(
+          { _id: usuarioId }, { $set: { foto, updatedAt: foto.subidaAt } }, { projection: { foto: 1 } },
+        );
+      } catch (error) {
+        await bucket.delete(archivoId).catch(() => {});
+        throw error;
+      }
+      if (!anterior) {
+        await bucket.delete(archivoId).catch(() => {});
+        throw new ErrorNegocio(404, 'Usuario no encontrado.');
+      }
+      if (anterior.foto?.archivoId) await bucket.delete(anterior.foto.archivoId).catch(() => {});
+      return this.obtenerPerfil(usuarioId);
+    },
+    async eliminarFotoPerfil(usuario) {
+      const base = await db();
+      const anterior = await base.collection('usuarios').findOneAndUpdate(
+        { _id: comoId(usuario) }, { $unset: { foto: '' }, $set: { updatedAt: new Date() } }, { projection: { foto: 1 } },
+      );
+      if (anterior?.foto?.archivoId) await new GridFSBucket(base, { bucketName: 'fotos' }).delete(anterior.foto.archivoId).catch(() => {});
+    },
+    // Devuelve { tipo, tamano, stream } o null si la foto no existe.
+    async abrirFoto(id) {
+      const archivoId = comoId(id);
+      if (!archivoId) return null;
+      const bucket = new GridFSBucket(await db(), { bucketName: 'fotos' });
+      const archivo = await bucket.find({ _id: archivoId }).next();
+      if (!archivo) return null;
+      return { tipo: archivo.contentType ?? archivo.metadata?.tipo, tamano: archivo.length, stream: bucket.openDownloadStream(archivoId) };
     },
 
     // ---------- planes y membresías ----------
