@@ -185,6 +185,7 @@ test('carrito persistente y pedido transaccional con control de stock', async ()
   assert.equal((await pedir('/api/pedidos', { metodo: 'POST' })).status, 409);
   assert.equal((await db.collection('productos').findOne({ _id: 'shaker' })).stock, shakerAntes);
   assert.equal((await pedir('/api/carrito')).body.items.length, 2);
+});
 
 const RUTA_FOTO = '/api/perfil/foto';
 const CAMPO_FOTO = 'foto';
@@ -254,4 +255,4 @@ test('foto de perfil: DELETE elimina la foto del usuario y de fotos.files', asyn
 test('foto de perfil: sin sesión no se puede subir', async () => {
   assert.equal(await subirFoto('', 'a.png'), 401);
 });
-});
+
