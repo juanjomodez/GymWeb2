@@ -168,3 +168,74 @@ Base de datos: MongoDB, utilizada para almacenar usuarios, membresias, reservas,
 
 Comunicacion: el frontend se comunicará con el backend mediante una API REST, mientras que el backend realizara 
 las operaciones de consulta y almacenamiento en MongoDB.
+
+## Base de datos: cómo acceder
+
+La información de GymFlow vive en **MongoDB Atlas**, en el clúster **GymFlow**, base de datos **`GymWeb`**.
+Es la misma base que usa el sitio publicado en https://gymflow-2rkj.onrender.com, así que todo lo que se
+registra en la página (usuarios, membresías, reservas, pedidos) aparece ahí.
+
+| Colección | Qué guarda |
+|---|---|
+| `usuarios` | Cuentas registradas (la contraseña se guarda cifrada, nunca en texto plano) |
+| `sesiones` | Sesiones iniciadas; se borran solas al vencer |
+| `planes` | Planes de membresía y sus precios |
+| `membresias` | Membresías compradas, fechas, estado y renovación automática |
+| `entrenadores` | Entrenadores y sus horarios |
+| `reservas` | Citas reservadas con entrenadores |
+| `rutinas` | Rutinas por objetivo con sus ejercicios |
+| `productos` | Productos de la tienda y su stock |
+| `carritos` | Carrito guardado de cada usuario |
+| `pedidos` | Compras realizadas en la tienda |
+| `maquinas` | Máquinas del gimnasio y músculos que trabajan |
+
+### Opción 1: ver los datos desde el navegador (Atlas)
+
+1. Pídele a **Alejandro** que te invite al proyecto de Atlas
+   (en Atlas: *Project Identity & Access* → *Invite to Project*, con tu correo).
+2. Acepta la invitación que llega a tu correo y entra a https://cloud.mongodb.com.
+3. En el menú de la izquierda abre **Data Explorer** → clúster **GymFlow** → base **GymWeb**.
+4. Haz clic en cualquier colección para ver sus documentos.
+
+### Opción 2: conectarte con MongoDB Compass (programa de escritorio)
+
+1. Descarga MongoDB Compass: https://www.mongodb.com/products/tools/compass
+2. Pídele a **Alejandro la cadena de conexión** (empieza por `mongodb+srv://`) **por mensaje privado**.
+3. En Compass pulsa **Add new connection**, pega la cadena y pulsa **Connect**.
+4. Abre la base **GymWeb**.
+
+### Opción 3: correr el proyecto en tu computador contra Atlas
+
+Necesitas Node.js 22 o superior.
+
+```powershell
+cd backend
+npm ci
+Copy-Item .env.example .env
+notepad .env
+```
+
+En el archivo `.env` pega la cadena de conexión después de `MONGODB_URI=` y guárdalo. Luego:
+
+```powershell
+npm run db:preparar   # crea colecciones, reglas e índices si faltan (no borra datos)
+npm start             # abre http://127.0.0.1:3000
+```
+
+### Probar sin tocar la base real
+
+```powershell
+cd backend
+npm run dev:memoria
+```
+
+Levanta la página con una base de datos temporal en tu computador. Sirve para hacer pruebas: todo lo que
+crees ahí se borra al cerrarla y no afecta la base de Atlas.
+
+### Reglas importantes
+
+- **Nunca subas el archivo `.env` ni la cadena de conexión a GitHub**, ni la compartas en grupos o capturas:
+  el repositorio es público. `.env` ya está ignorado por Git.
+- Si la contraseña se filtra, Alejandro debe cambiarla en Atlas (*Database & Network Access* → *Edit* →
+  *Edit Password*) y actualizar la variable `MONGODB_URI` en Render.
+- El usuario de la base solo tiene permiso sobre `GymWeb`; no puede ver ni modificar otras bases.
