@@ -23,3 +23,5 @@ services:
         value: GymWeb
       - key: MONGODB_URI
         sync: false
+      - key: CORS_ORIGINS
+        value: ""

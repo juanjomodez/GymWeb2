@@ -7,7 +7,7 @@ const envPath = fileURLToPath(new URL('../.env', import.meta.url));
 if (existsSync(envPath)) loadEnvFile(envPath);
 
 // Opcional: resolver SRV de Atlas cuando el DNS de la red bloquea consultas.
-// Solo afecta las consultas DNS de este proceso, no la configuración de Windows.
+// Solo afecta las consultas DNS de este proceso, no la configuracion de Windows.
 const dnsServers = process.env.MONGODB_DNS_SERVERS?.trim();
 if (dnsServers) {
   try {
@@ -22,11 +22,18 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) {
   throw new Error('PORT debe ser un entero entre 1 y 65535.');
 }
 
+// Origenes externos que pueden llamar a la API con CORS (separados por comas). Vacio = solo el mismo origen.
+const corsOrigins = (process.env.CORS_ORIGINS || '').split(',').map(origen => origen.trim().replace(/\/+$/, '')).filter(Boolean);
+for (const origen of corsOrigins) {
+  if (!/^https?:\/\/[^/\s]+$/.test(origen)) throw new Error(`CORS_ORIGINS contiene un origen inválido: ${origen}`);
+}
+
 export const config = {
   uri: process.env.MONGODB_URI?.trim() || '',
   database: process.env.MONGODB_DB?.trim() || 'GymWeb',
   host: process.env.HOST || '127.0.0.1',
   port,
-  // Detrás del proxy HTTPS del hosting (Render): número de saltos de proxy en los que confiar.
+  // Detrás del proxy HTTPS del hosting (Render): numero de saltos de proxy en los que confiar.
   trustProxy: Number(process.env.TRUST_PROXY || 0),
+  corsOrigins,
 };
