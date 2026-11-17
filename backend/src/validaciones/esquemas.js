@@ -1,5 +1,5 @@
 // Esquemas de entrada de cada endpoint. Los mensajes son los que ve el usuario en la web.
-import { MESES_VALIDOS } from '../database.js';
+import { MESES_VALIDOS } from '../servicios/membresias.servicio.js';
 import { OBJETIVOS } from '../esquema.js';
 import {
   booleano, contrasena, correo, entero, esquema, fechaDia, instante, lista, objectId, objeto, opcional, slug, texto, unoDe,

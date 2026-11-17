@@ -1,7 +1,9 @@
 # API de GymFlow
 
-Contrato de las rutas implementadas en `backend/src/app.js`, `auth.js`, `api.js`
-y `database.js`. El servidor Express sirve la web y la API desde el mismo origen.
+Contrato de las rutas implementadas en `backend/src/rutas/`, con sus controladores,
+middlewares y validaciones. Las reglas de negocio viven en `backend/src/servicios/`,
+las consultas en `backend/src/repositorios/` y la conexión y transacciones en
+`backend/src/database.js`. El servidor Express sirve la web y la API desde el mismo origen.
 La URL local predeterminada es `http://127.0.0.1:3000`.
 
 ## Convenciones

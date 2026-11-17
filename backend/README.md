@@ -113,7 +113,7 @@ validador `$jsonSchema` (`validationLevel: strict`), sus índices y el catálogo
 | `pedidos` | líneas con precio congelado, total, referencia | referencia única |
 | `maquinas` | datos de `js/maquinas.js` (fuente única) | por área |
 
-Reglas de negocio (en `src/database.js`):
+Reglas de negocio (en `src/servicios/`):
 
 - **Compra de membresía** (transacción): mismo plan → se suma el tiempo; otro plan → la anterior
   queda `reemplazada` y la nueva empieza hoy. Duraciones de 1, 3, 6 o 12 meses.
@@ -228,13 +228,28 @@ Abrir la portada desde Express permite cargar los catálogos y usar las funcione
 de cuenta; abrir los HTML como archivos locales no permite consultar la API.
 
 - `src/config.js`: configuración local.
-- `src/database.js`: pool del driver, persistencia, reglas de negocio, GridFS y ping real.
+- `src/database.js`: conexión del driver, preparación inicial, ping, cierre y transacciones.
+- `src/repositorios/`: consultas a MongoDB por colección. `fotos.repositorio.js` usa GridFS
+  para `fotos.files`; los fragmentos de `fotos.chunks` los administra el driver.
+- `src/servicios/`: reglas de usuarios/perfil, membresías, reservas y tienda. Aquí se
+  calculan vencimientos, renovaciones, horarios, precios y totales, y se coordinan las compras.
+- `src/servicios/index.js`: compone los repositorios y servicios mediante
+  `crearServicios(conexion)` o `crearServiciosMongo(config)`, utilizado por el servidor,
+  el modo en memoria y la verificación de Atlas.
 - `src/esquema.js`: validadores, migración de rol e índices de las colecciones.
-- `src/api.js`: catálogo, perfil, fotos, membresías, reservas, carrito y pedidos.
-- `src/auth.js`: sesiones, cookies, control de origen y protección de rutas.
-- `src/app.js`: composición de rutas, registro, archivos públicos y respuestas ante fallos.
+- `src/rutas/`: rutas de la API y de las páginas públicas y privadas.
+- `src/controladores/`: respuestas HTTP y llamada a los servicios.
+- `src/middlewares/`: autenticación, seguridad, subida de fotos y manejo de errores.
+- `src/validaciones/`: esquemas y validación de los datos de entrada.
+- `src/app.js`: composición de Express y sus capas.
 - `src/server.js`: inicio y cierre del servidor.
 - `test/health.test.js`: pruebas HTTP y fallo del driver real.
+
+El flujo de una petición es: ruta → validación/autenticación → controlador → servicio
+→ repositorio → MongoDB. Los repositorios reciben la sesión de MongoDB cuando una
+operación pertenece a una transacción. Las compras de membresía y los pedidos
+conservan esa sesión en todas sus consultas y escrituras; un fallo de stock revierte
+los descuentos y evita registrar el pedido o vaciar el carrito parcialmente.
 
 Las colecciones implementadas están en la tabla de la fase 4. Los pendientes de
 pruebas de fotos y diagrama ER están en el checklist de semana 13. Un ping confirma

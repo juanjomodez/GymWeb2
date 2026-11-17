@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { MongoClient } from 'mongodb';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { createApp } from '../src/app.js';
-import { createDatabase } from '../src/database.js';
+import { crearServiciosMongo } from '../src/servicios/index.js';
 import { asegurarEsquema } from '../src/esquema.js';
 
 let replica, database, server, base, cliente, db;
@@ -13,7 +13,7 @@ let replica, database, server, base, cliente, db;
 before(async () => {
   replica = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
   const uri = replica.getUri();
-  database = createDatabase({ uri, database: 'GymTest' });
+  database = crearServiciosMongo({ uri, database: 'GymTest' });
   server = createApp(database).listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   base = `http://127.0.0.1:${server.address().port}`;
