@@ -162,7 +162,10 @@ export const COLECCIONES = {
       stock: entero(0),
       activo: { bsonType: 'bool' },
     }),
-    indices: [[{ activo: 1, categoria: 1 }, { name: 'productos_activos' }]],
+    indices: [
+      [{ activo: 1, categoria: 1 }, { name: 'productos_activos' }],
+      [{ activo: 1, precio: -1 }, { name: 'productos_activos_precio' }],
+    ],
   },
   carritos: {
     schema: objeto(['items', 'updatedAt'], {

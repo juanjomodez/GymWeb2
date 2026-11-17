@@ -108,10 +108,17 @@ validador `$jsonSchema` (`validationLevel: strict`), sus índices y el catálogo
 | `entrenadores` | especialidad, zona, horario semanal (hora de Cali) | — |
 | `reservas` | usuario, entrenador, inicio/fin, estado | **un horario de entrenador no se reserva dos veces** (único parcial) |
 | `rutinas` | objetivo, nivel, ejercicios con series y músculos | por objetivo |
-| `productos` | precio, imagen, stock | — |
+| `productos` | precio, imagen, stock | `productos_activos` por activo/categoría y `productos_activos_precio` por activo/precio descendente |
 | `carritos` | `_id` = usuario, productos y cantidades | máx. 30 productos, 1–20 unidades |
 | `pedidos` | líneas con precio congelado, total, referencia | referencia única |
 | `maquinas` | datos de `js/maquinas.js` (fuente única) | por área |
+
+El índice `productos_activos_precio`, con clave `{ activo: 1, precio: -1 }`, corresponde
+a la consulta del catálogo de productos activos ordenados de mayor a menor precio.
+Se crea desde `src/esquema.js` al preparar la base: al iniciar el backend, en el modo
+en memoria o con `npm run db:preparar` contra la base configurada. La preparación
+puede repetirse sin duplicar el índice. La prueba de integración comprueba también
+que ese índice permite atender el filtro y orden sin una etapa `SORT` adicional.
 
 Reglas de negocio (en `src/servicios/`):
 
