@@ -267,6 +267,11 @@ con `usuario: null`; no demuestra conectividad. Ver [README del backend](../back
 Al preparar la base se vuelve a sembrar el catálogo; para observar un cambio de
 precio manual, mantener el servidor encendido y recargar solo el navegador.
 
+Para una cuenta ya preparada con membresía, cita y pedido, configurar `.env` y
+ejecutar `npm run seed` desde `backend/`. Sin Atlas, usar
+`npm run dev:memoria -- --seed`. Las credenciales demo y el comportamiento al
+repetir la carga están en [Cuenta demo del README](../backend/README.md#cuenta-demo-npm-run-seed).
+
 ## Comprobación automática
 
 ```powershell
@@ -277,5 +282,5 @@ npm test
 Las pruebas de integración usan un MongoDB temporal y las de autenticación/perfil
 también emplean bases simuladas. El índice `fotos_por_usuario` se crea al preparar
 el esquema y se comprueba su clave y la repetición idempotente de esa preparación.
-Los pendientes de integración de las fotos y del modelo ER se detallan en
-[semana13-pendientes.md](semana13-pendientes.md).
+La suite incluye la persistencia, el reemplazo y el borrado de fotos con MongoDB
+temporal, además de la cuenta demo, la repetición del seed y su rollback ante fallos.

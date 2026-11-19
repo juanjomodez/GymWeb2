@@ -7,8 +7,9 @@ import { crearReservasServicio } from './reservas.servicio.js';
 import { crearTiendaServicio } from './tienda.servicio.js';
 
 // Compone los servicios que consumen los controladores, conservando su contrato público.
-export function crearServicios(conexion) {
-  const repositorios = crearRepositorios(conexion.db);
+// Una sesión opcional agrupa varias operaciones de negocio en la transacción del seed.
+export function crearServicios(conexion, { session } = {}) {
+  const repositorios = crearRepositorios(conexion.db, session);
   const { sincronizar, ...membresias } = crearMembresiasServicio(repositorios, conexion.transaccion);
   return {
     ...crearUsuariosServicio(repositorios),

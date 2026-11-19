@@ -1,7 +1,7 @@
-export function crearMaquinasRepositorio(db) {
+export function crearMaquinasRepositorio(db, session) {
   return {
     async listar() {
-      return (await db()).collection('maquinas').find().toArray();
+      return (await db()).collection('maquinas').find({}, { session }).toArray();
     },
   };
 }

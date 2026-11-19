@@ -66,9 +66,8 @@ configuración o conexión antes de esperar respuestas exitosas del catálogo y 
 `npm test`, desde `backend/`, ejecuta las pruebas de perfil con base simulada y las
 de integración existentes con MongoDB temporal. La prueba de esquema comprueba
 la clave del índice de fotos y que repetir la preparación no lo duplique.
-Las pruebas de persistencia, reemplazo y borrado de archivos con MongoDB y la
-actualización del diagrama ER siguen detalladas en
-[docs/semana13-pendientes.md](../docs/semana13-pendientes.md).
+La suite también comprueba la persistencia, el reemplazo y el borrado de fotos
+contra GridFS con MongoDB temporal.
 
 ## Publicar en la web (Render + MongoDB Atlas)
 
@@ -152,6 +151,55 @@ npm run dev:memoria
 Arranca la web en http://127.0.0.1:3000 con un MongoDB temporal en memoria (los datos se pierden al
 cerrarlo). La primera vez descarga el binario oficial de `mongod`. `npm test` usa el mismo mecanismo
 para las pruebas de integración (esquema, membresías, reservas, carrito y pedidos).
+
+## Cuenta demo: `npm run seed`
+
+Desde `backend/`, con `MONGODB_URI` y `MONGODB_DB` configuradas en `.env`:
+
+```powershell
+npm run seed
+npm start
+```
+
+El comando prepara el esquema y catálogo y carga una cuenta de demostración:
+
+| Dato | Valor |
+|---|---|
+| Correo | `demo@gymflow.test` |
+| Contraseña de demostración | `GymFlowDemo2026!` |
+| Rol | `cliente` |
+| Membresía inicial | Premium, 1 mes, sin renovación automática |
+| Cita | Un horario futuro disponible de los próximos 30 días, en hora de Cali/Bogotá |
+| Compra | Una unidad de Shaker; si no tiene stock, otro producto disponible. Pago simulado. |
+
+Abrir `http://127.0.0.1:3000/login.html`, iniciar sesión con estas credenciales y
+revisar **Mi cuenta**: membresía, reservas y pedidos. El comando imprime también
+el horario ISO de la cita y la referencia de la compra.
+
+Para probar sin Atlas, iniciar una base temporal con esos mismos datos:
+
+```powershell
+npm run dev:memoria -- --seed
+```
+
+Este modo sirve la web y conserva los datos solo mientras está encendido. Se pierde
+la base al detenerlo. `npm run seed` utiliza la base indicada en `.env`; no modifica
+la base temporal de otro proceso. El inicio habitual sin `--seed` conserva su comportamiento.
+
+Se reutilizan los servicios y repositorios de la aplicación. La cuenta, la membresía,
+la cita y la compra se cargan en una transacción: si no hay stock u horario, se
+revierte esa carga. El esquema y catálogo se preparan antes de la transacción.
+
+Repetir el comando conserva la membresía vigente con entrenador, la cita futura y
+la compra existente: no vuelve a descontar stock ni duplica esos registros. Si la
+cita pasó o se canceló, agenda otra; si ya no hay membresía activa con entrenador,
+compra de nuevo Premium. También se comprueban ejecuciones simultáneas.
+
+El seed reconoce su cuenta mediante un ID reservado y el correo demo. Si ese correo
+pertenece a otro usuario, o se modificó el rol o contraseña de la cuenta demo, falla
+sin reemplazar esas credenciales. Las cuentas de otros usuarios se conservan.
+Las pruebas de `test/seed.test.js` verifican login, relaciones, repetición del comando,
+stock, rollback y concurrencia con MongoDB temporal.
 
 ## Fase 3: inicio de sesión y Mi cuenta
 
@@ -258,9 +306,9 @@ operación pertenece a una transacción. Las compras de membresía y los pedidos
 conservan esa sesión en todas sus consultas y escrituras; un fallo de stock revierte
 los descuentos y evita registrar el pedido o vaciar el carrito parcialmente.
 
-Las colecciones implementadas están en la tabla de la fase 4. Los pendientes de
-pruebas de fotos y diagrama ER están en el checklist de semana 13. Un ping confirma
-conectividad, pero no valida permisos de escritura ni la existencia de colecciones.
+Las colecciones implementadas están en la tabla de la fase 4. El diagrama ER está
+en `docs/Diagrama ER Gym.png`. Un ping confirma conectividad, pero no valida
+permisos de escritura ni la existencia de colecciones.
 
 ## Preparar MongoDB Atlas
 

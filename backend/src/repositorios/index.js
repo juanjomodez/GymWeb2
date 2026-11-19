@@ -11,13 +11,13 @@ import { crearPedidosRepositorio } from './pedidos.repositorio.js';
 import { crearMaquinasRepositorio } from './maquinas.repositorio.js';
 import { crearFotosRepositorio } from './fotos.repositorio.js';
 
-export function crearRepositorios(db) {
+export function crearRepositorios(db, session) {
   return {
-    usuarios: crearUsuariosRepositorio(db), sesiones: crearSesionesRepositorio(db),
-    planes: crearPlanesRepositorio(db), membresias: crearMembresiasRepositorio(db),
-    entrenadores: crearEntrenadoresRepositorio(db), reservas: crearReservasRepositorio(db),
-    rutinas: crearRutinasRepositorio(db), productos: crearProductosRepositorio(db),
-    carritos: crearCarritosRepositorio(db), pedidos: crearPedidosRepositorio(db),
-    maquinas: crearMaquinasRepositorio(db), fotos: crearFotosRepositorio(db),
+    usuarios: crearUsuariosRepositorio(db, session), sesiones: crearSesionesRepositorio(db, session),
+    planes: crearPlanesRepositorio(db, session), membresias: crearMembresiasRepositorio(db, session),
+    entrenadores: crearEntrenadoresRepositorio(db, session), reservas: crearReservasRepositorio(db, session),
+    rutinas: crearRutinasRepositorio(db, session), productos: crearProductosRepositorio(db, session),
+    carritos: crearCarritosRepositorio(db, session), pedidos: crearPedidosRepositorio(db, session),
+    maquinas: crearMaquinasRepositorio(db, session), fotos: crearFotosRepositorio(db),
   };
 }
