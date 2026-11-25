@@ -522,6 +522,15 @@ function setupProductCart(productos) {
             link.href = "micuenta.html#pedidos";
             link.textContent = "Ver mis compras";
             feedback.append(done, link);
+            // Comprobante PDF del pedido (se abre en otra pestaña con el visor del navegador).
+            if (result.pedido?.comprobante) {
+                const pdf = document.createElement("a");
+                pdf.href = result.pedido.comprobante;
+                pdf.target = "_blank";
+                pdf.rel = "noopener";
+                pdf.textContent = "Ver comprobante (PDF)";
+                feedback.append(" · ", pdf);
+            }
         } catch (error) {
             feedback.textContent = error.message || "No se pudo completar la compra. Intenta nuevamente.";
         } finally {

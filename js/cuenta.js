@@ -1,5 +1,5 @@
 // Mi cuenta: membresía (compra simulada y renovación automática), citas con entrenadores,
-// rutinas y compras. Todo se lee y guarda en la API; la página solo existe con sesión iniciada.
+// rutinas, compras y archivos (comprobantes PDF). Todo se lee y guarda en la API; la página solo existe con sesión iniciada.
 const ZONA = "America/Bogota";
 const moneda = new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 });
 const fechaLarga = new Intl.DateTimeFormat("es-CO", { dateStyle: "long", timeZone: ZONA });
@@ -49,6 +49,19 @@ function avisar(nodo, texto, tipo = "info") {
     nodo.textContent = texto;
     nodo.dataset.tipo = tipo;
 }
+
+// Enlace al comprobante PDF de una operación (se abre con el visor del navegador en otra pestaña).
+function enlaceComprobante(url, texto = "Comprobante", etiqueta) {
+    if (!url) return null;
+    return el("a", { clase: "enlace-comprobante", texto, attrs: { href: url, target: "_blank", rel: "noopener", ...(etiqueta ? { "aria-label": etiqueta } : {}) } });
+}
+// Aviso de éxito con el enlace al comprobante a continuación.
+function avisarConComprobante(nodo, texto, url) {
+    avisar(nodo, `${texto} `, "exito");
+    const enlace = enlaceComprobante(url, "Ver comprobante");
+    if (enlace) nodo.append(enlace);
+}
+const TIPOS_PAGO = { compra: "Compra", extension: "Extensión", renovacion: "Renovación automática" };
 
 // ---------- pestañas ----------
 const pestanas = [...document.querySelectorAll(".cuenta-pestanas [role=tab]")];
@@ -125,7 +138,8 @@ function pintarMembresia() {
                 el("p", { texto: "Renovación automática", attrs: { id: "renovacion-etiqueta" } }),
                 el("p", { clase: "cuenta-nota", texto: m.renovacionAutomatica ? `Se renovará por ${m.meses} ${m.meses === 1 ? "mes" : "meses"} al finalizar.` : "Tu plan terminará en la fecha de finalización." })),
             interruptor),
-        el("p", { clase: "aviso aviso-renovacion", attrs: { role: "status", "aria-live": "polite" } })
+        el("p", { clase: "aviso aviso-renovacion", attrs: { role: "status", "aria-live": "polite" } }),
+        enlaceComprobante(m.pagos.at(-1)?.comprobante, "Comprobante del último pago")
     );
 }
 
@@ -165,7 +179,11 @@ function pintarHistorial(historial) {
         el("strong", { texto: m.plan.nombre }),
         el("span", { texto: `${fechaLarga.format(new Date(m.fechaInicio))} – ${fechaLarga.format(new Date(m.fechaFin))}` }),
         el("span", { clase: `estado estado-${m.estado}`, texto: ESTADOS[m.estado] }),
-        el("span", { texto: moneda.format(m.precioPagado) })
+        el("span", { texto: moneda.format(m.precioPagado) }),
+        // Cada pago (compra, extensión o renovación) tiene su propio comprobante.
+        el("ul", { clase: "pagos-historial" }, ...m.pagos.slice().reverse().map((p) => el("li", {},
+            el("span", { texto: `${TIPOS_PAGO[p.tipo] ?? p.tipo} · ${fechaLarga.format(new Date(p.fecha))} · ${moneda.format(p.monto)}` }),
+            enlaceComprobante(p.comprobante, "Comprobante", `Comprobante del pago ${p.referencia}`))))
     )) : [el("li", { texto: "Aún no has comprado membresías." })]));
 }
 
@@ -190,8 +208,12 @@ dialogo.addEventListener("close", async () => {
     if (dialogo.returnValue !== "comprar" || !planEnCompra) return;
     avisar(mensajeGeneral, "Procesando el pago simulado…");
     const r = await api("/api/membresias", { metodo: "POST", cuerpo: { planId: planEnCompra.id, meses: Number($("#compra-meses").value) } });
-    avisar(mensajeGeneral, r.body.message || "No se pudo completar la compra.", r.ok ? "exito" : "error");
-    if (r.ok) await cargarMembresia();
+    if (r.ok) avisarConComprobante(mensajeGeneral, r.body.message, r.body.membresia.pagos.at(-1)?.comprobante);
+    else avisar(mensajeGeneral, r.body.message || "No se pudo completar la compra.", "error");
+    if (r.ok) {
+        cargados.delete("archivos");
+        await cargarMembresia();
+    }
     mensajeGeneral.scrollIntoView({ behavior: "smooth", block: "center" });
 });
 
@@ -268,7 +290,8 @@ async function cargarReservas() {
         const item = el("li", { clase: "tarjeta reserva" },
             el("img", { attrs: { src: res.imagen ?? "img/logo.png", alt: "", loading: "lazy", width: "56", height: "56" } }),
             el("div", {}, el("strong", { texto: res.entrenador }), el("span", { texto: fechaHora.format(new Date(res.inicio)) })),
-            el("span", { clase: `estado estado-${res.estado === "cancelada" ? "cancelada" : futura ? "activa" : "vencida"}`, texto: res.estado === "cancelada" ? "Cancelada" : futura ? "Confirmada" : "Realizada" }));
+            el("span", { clase: `estado estado-${res.estado === "cancelada" ? "cancelada" : futura ? "activa" : "vencida"}`, texto: res.estado === "cancelada" ? "Cancelada" : futura ? "Confirmada" : "Realizada" }),
+            enlaceComprobante(res.comprobante, "Comprobante", `Comprobante de la cita con ${res.entrenador}`));
         if (futura) {
             const cancelar = el("button", { clase: "boton-fantasma", texto: "Cancelar", attrs: { type: "button", "aria-label": `Cancelar cita con ${res.entrenador}` } });
             cancelar.addEventListener("click", async () => {
@@ -290,8 +313,10 @@ formReserva.addEventListener("submit", async (e) => {
     if (!elegido) return;
     botonReservar.disabled = true;
     const r = await api("/api/reservas", { metodo: "POST", cuerpo: { entrenadorId: selectEntrenador.value, inicio: elegido.value } });
-    if (r.ok) avisar(avisoReserva, `Cita confirmada: ${fechaHora.format(new Date(r.body.reserva.inicio))} con ${r.body.reserva.entrenador}.`, "exito");
-    else {
+    if (r.ok) {
+        avisarConComprobante(avisoReserva, `Cita confirmada: ${fechaHora.format(new Date(r.body.reserva.inicio))} con ${r.body.reserva.entrenador}.`, r.body.reserva.comprobante);
+        cargados.delete("archivos");
+    } else {
         const conEnlace = r.status === 403;
         avisar(avisoReserva, r.body.message || "No se pudo reservar.", "error");
         if (conEnlace) {
@@ -384,9 +409,58 @@ cargadores.pedidos = async () => {
             el("div", {}, el("strong", { texto: `Pedido ${p.referencia}` }), el("span", { clase: "cuenta-nota", texto: fechaLarga.format(new Date(p.createdAt)) })),
             el("span", { clase: "estado estado-activa", texto: "Pagado" })),
         el("ul", {}, ...p.items.map((i) => el("li", { texto: `${i.cantidad} × ${i.nombre} — ${moneda.format(i.subtotal)}` }))),
-        el("p", { clase: "plan-precio", texto: `Total ${moneda.format(p.total)}` })
+        el("div", { clase: "pedido-pie" },
+            el("p", { clase: "plan-precio", texto: `Total ${moneda.format(p.total)}` }),
+            enlaceComprobante(p.comprobante, "Comprobante", `Comprobante del pedido ${p.referencia}`))
     )) : [el("li", { clase: "vacio", texto: "Aún no has hecho compras en la tienda." })]));
 };
+
+// ---------- mis archivos (comprobantes y foto, con su huella SHA-256) ----------
+const MODULOS = { membresias: "Membresía", reservas: "Cita", pedidos: "Tienda", perfil: "Foto de perfil" };
+const tamano = (bytes) => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1).replace(".", ",")} KB` : `${(bytes / 1048576).toFixed(1).replace(".", ",")} MB`;
+const fechaCorta = new Intl.DateTimeFormat("es-CO", { dateStyle: "medium", timeStyle: "short", timeZone: ZONA });
+let filtroArchivos = "";
+
+async function cargarArchivos(modulo = filtroArchivos) {
+    filtroArchivos = modulo;
+    document.querySelectorAll(".filtros-archivos button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.modulo === modulo)));
+    const lista = $(".lista-archivos");
+    lista.setAttribute("aria-busy", "true");
+    const r = await api(`/api/archivos${modulo ? `?modulo=${modulo}` : ""}`);
+    lista.removeAttribute("aria-busy");
+    if (!r.ok) {
+        lista.replaceChildren(el("li", { clase: "vacio", texto: r.body.message || "No se pudieron cargar tus archivos." }));
+        return;
+    }
+    if (!r.body.archivos.length) {
+        lista.replaceChildren(el("li", { clase: "vacio", texto: modulo ? "No hay archivos de este tipo." : "Aún no tienes archivos. Cada compra, cita o pedido genera su comprobante aquí." }));
+        return;
+    }
+    lista.replaceChildren(...r.body.archivos.map((a) => {
+        const pdf = a.tipo === "application/pdf";
+        const copiar = el("button", { clase: "boton-hash", texto: `SHA-256 ${a.sha256.slice(0, 12)}…`, attrs: { type: "button", title: `SHA-256: ${a.sha256}`, "aria-label": `Copiar huella SHA-256 de ${a.titulo}` } });
+        copiar.addEventListener("click", async () => {
+            try {
+                await navigator.clipboard.writeText(a.sha256);
+                copiar.textContent = "Huella copiada";
+            } catch {
+                copiar.textContent = a.sha256;
+            }
+            setTimeout(() => { copiar.textContent = `SHA-256 ${a.sha256.slice(0, 12)}…`; }, 2500);
+        });
+        return el("li", { clase: "tarjeta archivo" },
+            el("span", { clase: `archivo-icono${pdf ? "" : " archivo-icono-imagen"}`, texto: pdf ? "PDF" : a.nombre.split(".").pop().toUpperCase(), attrs: { "aria-hidden": "true" } }),
+            el("div", { clase: "archivo-info" },
+                el("strong", { texto: a.titulo }),
+                el("span", { clase: "cuenta-nota", texto: `${MODULOS[a.modulo] ?? a.modulo} · ${fechaCorta.format(new Date(a.fecha))} · ${tamano(a.peso)}` }),
+                copiar),
+            el("div", { clase: "archivo-acciones" },
+                el("a", { clase: "boton-fantasma", texto: "Ver", attrs: { href: a.url, target: "_blank", rel: "noopener", "aria-label": `Ver ${a.titulo}` } }),
+                el("a", { clase: "boton", texto: "Descargar", attrs: { href: a.descarga, download: a.titulo, "aria-label": `Descargar ${a.titulo}` } })));
+    }));
+}
+document.querySelectorAll(".filtros-archivos button").forEach((b) => b.addEventListener("click", () => cargarArchivos(b.dataset.modulo)));
+cargadores.archivos = () => cargarArchivos();
 
 // ---------- editar perfil y foto ----------
 // La foto se envía como multipart/form-data (FormData) a POST /api/perfil/foto.
@@ -443,6 +517,7 @@ formFoto.addEventListener("submit", async (e) => {
     if (r.ok) {
         formFoto.reset();
         pintarPerfil(r.body.perfil);
+        cargados.delete("archivos");
     }
 });
 
@@ -452,7 +527,10 @@ botonQuitarFoto.addEventListener("click", async () => {
     const r = await api("/api/perfil/foto", { metodo: "DELETE" });
     botonQuitarFoto.disabled = false;
     avisar(aviso, r.body.message ?? "No se pudo quitar la foto.", r.ok ? "exito" : "error");
-    if (r.ok) pintarFoto(null);
+    if (r.ok) {
+        pintarFoto(null);
+        cargados.delete("archivos");
+    }
 });
 
 formPerfil.addEventListener("submit", async (e) => {
