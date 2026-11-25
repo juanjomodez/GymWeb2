@@ -269,3 +269,31 @@ test('foto de perfil: sin sesión no se puede subir', async () => {
   assert.equal(await subirFoto('', 'a.png'), 401);
 });
 
+test('esquema: el validador rechaza un telefono inválido insertado directo (código 121)', async () => {
+  const usuarios = db.collection('usuarios');
+  // Documento válido en todo lo demás, para que el único error posible sea el teléfono.
+  const base = correo => ({
+    nombre: 'Prueba Tel',
+    correo,
+    passwordHash: 'scrypt$prueba',
+    rol: 'cliente',
+    createdAt: new Date(),
+  });
+
+  // Control: un teléfono válido sí entra (con y sin +).
+  await usuarios.insertOne({ ...base('tel-ok1@example.com'), telefono: '3001234567' });
+  await usuarios.insertOne({ ...base('tel-ok2@example.com'), telefono: '+57 300 123 4567' });
+
+  // Teléfonos inválidos: letras, muy corto, muy largo, guiones y tipo número en vez de texto.
+  const invalidos = ['abc1234567', '12345', '1'.repeat(21), '300-123-4567', 3001234567];
+  for (const [i, telefono] of invalidos.entries()) {
+    await assert.rejects(
+      usuarios.insertOne({ ...base(`tel-malo${i}@example.com`), telefono }),
+      { code: 121 },
+      `debería rechazar el telefono ${JSON.stringify(telefono)}`
+    );
+  }
+
+  // Ninguno de los inválidos quedó guardado.
+  assert.equal(await usuarios.countDocuments({ correo: /^tel-malo/ }), 0);
+});
