@@ -5,6 +5,7 @@ middlewares y validaciones. Las reglas de negocio viven en `backend/src/servicio
 las consultas en `backend/src/repositorios/` y la conexión y transacciones en
 `backend/src/database.js`. El servidor Express sirve la web y la API desde el mismo origen.
 La URL local predeterminada es `http://127.0.0.1:3000`.
+El origen de producción es [gymflow-2rkj.onrender.com](https://gymflow-2rkj.onrender.com).
 
 ## Convenciones
 
@@ -32,6 +33,16 @@ Los errores de la API tienen normalmente esta forma:
 { "message": "Descripción del problema." }
 ```
 
+Las validaciones de parámetros, consultas y cuerpos pueden incluir
+`errores` con la lista de campos rechazados.
+
+```json
+{
+  "message": "Revisa los datos ingresados.",
+  "errores": [{ "campo": "correo", "problema": "Motivo de la validación." }]
+}
+```
+
 | Código | Significado y condiciones |
 |---|---|
 | `400` | Entrada inválida o JSON mal formado. |
@@ -45,9 +56,9 @@ Los errores de la API tienen normalmente esta forma:
 | `500` | Error no controlado por los manejadores de las rutas: `{ "message": "Error interno." }`. |
 | `503` | Fallo al consultar o escribir en MongoDB, al comprobar la sesión o al preparar el esquema/catálogo. Las rutas de negocio también convierten errores inesperados en este código. No se exponen errores internos ni credenciales. |
 
-La comprobación de `Origin` se aplica a métodos distintos de `GET` y `HEAD` bajo
-`/api`, incluidas las rutas públicas de registro, login y logout. Un cliente como
-curl puede omitir esta cabecera; si la envía, debe usar el mismo origen.
+La comprobación de `Origin` se aplica a las escrituras bajo `/api`, incluidas
+las rutas públicas de registro, login y logout. Si el cliente envía esta
+cabecera, debe usar el mismo origen o uno autorizado en `CORS_ORIGINS`.
 
 Por defecto `/api` responde con `Cache-Control: no-store`. Los listados de planes,
 entrenadores, máquinas y rutinas permiten caché pública durante 60 segundos.
@@ -162,6 +173,11 @@ el formato detectado, `Content-Length` y `Cache-Control: public, max-age=3153600
 immutable`. Si falla el stream una vez iniciada la descarga, se corta la conexión;
 en ese punto ya no se puede devolver un error JSON. Una copia descargada puede
 seguir en la caché del navegador tras reemplazar o eliminar la foto.
+
+El almacenamiento de archivos de esta rama corresponde a las fotos de perfil
+descritas arriba. El [router de la API](../backend/src/rutas/api.rutas.js) define
+las rutas disponibles. Los comprobantes y el listado de archivos del usuario
+quedan pendientes de la API que los implemente.
 
 ## Membresías
 
@@ -284,3 +300,4 @@ también emplean bases simuladas. El índice `fotos_por_usuario` se crea al prep
 el esquema y se comprueba su clave y la repetición idempotente de esa preparación.
 La suite incluye la persistencia, el reemplazo y el borrado de fotos con MongoDB
 temporal, además de la cuenta demo, la repetición del seed y su rollback ante fallos.
+GitHub Actions ejecuta esta misma suite en cada pull request.

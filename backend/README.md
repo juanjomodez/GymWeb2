@@ -307,7 +307,7 @@ conservan esa sesión en todas sus consultas y escrituras; un fallo de stock rev
 los descuentos y evita registrar el pedido o vaciar el carrito parcialmente.
 
 Las colecciones implementadas están en la tabla de la fase 4. El diagrama ER está
-en `docs/Diagrama ER Gym.png`. Un ping confirma conectividad, pero no valida
+en [el diagrama ER](../docs/diagrama-er.md). Un ping confirma conectividad, pero no valida
 permisos de escritura ni la existencia de colecciones.
 
 ## Preparar MongoDB Atlas
