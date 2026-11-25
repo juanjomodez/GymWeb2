@@ -3,6 +3,69 @@
 El contrato completo de las rutas, sus entradas, autenticación, respuestas y códigos
 HTTP está en [docs/API.md](../docs/API.md).
 
+## Persistencia dual: base de datos + ficheros
+
+Cada **compra de plan** (compra, extensión o renovación automática), **cita con
+entrenador** y **pedido de la tienda** genera un comprobante PDF. El fichero se guarda
+en disco y sus metadatos en MongoDB, en la colección `archivos`. La foto de perfil
+sigue en GridFS, pero ahora también se registra con nombre UUID y SHA-256.
+
+| Pieza | Dónde | Qué hace |
+|---|---|---|
+| `src/almacenamiento/pdf.js` | Disco | Genera el PDF sin dependencias. Es **determinista**: los mismos datos producen los mismos bytes. |
+| `src/almacenamiento/disco.js` | Disco | Escribe en `backend/almacenamiento/comprobantes/<uuid>.pdf` de forma atómica (temporal + `rename`) y rechaza rutas fuera de la raíz. |
+| `src/servicios/comprobantes.js` | — | Arma los datos de cada comprobante (membresía, cita, pedido) y los dibuja. |
+| `src/servicios/archivos.js` | Disco + MongoDB | Emite los comprobantes (uno por operación), los lista, verifica su SHA-256 y los regenera si faltan. |
+| `src/repositorios/archivos.js` | MongoDB | Solo las consultas a la colección `archivos`. |
+
+**Colección `archivos`** (validada con `$jsonSchema`):
+
+| Campo | Contenido |
+|---|---|
+| `nombre` | Nombre real del fichero: UUID v4 + extensión (`3f2a…e9.pdf`). Nunca el nombre que envía el usuario. |
+| `titulo` | Nombre legible para descargar (`Comprobante GF-1A2B3C4D5E.pdf`). |
+| `tipo`, `peso` | MIME (`application/pdf`, `image/png`…) y tamaño en bytes. |
+| `ruta`, `almacen` | `comprobantes/<uuid>.pdf` en `disco`, o `fotos/<id>` en `gridfs`. Siempre relativa. |
+| `fecha` | Momento en que se creó el fichero. |
+| `autor` | `ObjectId` del usuario dueño. |
+| `modulo`, `operacion` | `membresias` + referencia del pago, `reservas` + id de la cita, `pedidos` + referencia del pedido, `perfil` + `foto-<id>`. |
+| `sha256` | Huella hexadecimal del contenido. |
+| `datos` | Solo comprobantes: los textos con los que se dibujó el PDF. |
+
+Índices: `archivo_por_operacion` (único `{ modulo, operacion }`: una operación nunca
+tiene dos comprobantes, ni con peticiones simultáneas), `archivos_por_autor`
+(`{ autor, fecha: -1 }`) y `nombre_uuid_unico`.
+
+**Integridad.** Al abrir un archivo, el backend recalcula su SHA-256 antes de
+entregarlo. Si el PDF no está en disco (el disco de Render es efímero y se borra en
+cada despliegue) o fue modificado, lo vuelve a dibujar con `datos`. Como el generador
+es determinista, el resultado debe tener exactamente el mismo hash; si no lo tiene,
+responde `500` en lugar de entregar un archivo distinto. Las fotos están en
+GridFS (persisten en Atlas) y también se verifican.
+
+**Comprobantes pendientes.** El PDF se genera después de confirmar la operación
+(fuera de la transacción). Si la generación falla, la compra no se revierte: el
+comprobante se completa al abrir la sección o al listar los archivos. Lo mismo
+ocurre con las operaciones hechas antes de esta función.
+
+**Fotos de perfil.** En GridFS se guardan como `<uuid>.<ext>` con `metadata.sha256`;
+`usuarios.foto` añade `nombre` y `sha256`, y la colección `archivos` registra la
+foto (módulo `perfil`). Al reemplazarla o borrarla se elimina también su registro.
+`asegurarEsquema` migra las fotos que se subieron antes de esta función.
+
+| Método y ruta | Acceso | Respuesta |
+|---|---|---|
+| `GET /api/archivos?modulo=` | Privado | `200 { archivos: Archivo[] }`. `modulo` es opcional: `membresias`, `reservas`, `pedidos` o `perfil`. |
+| `GET /api/archivos/:id` | Solo el dueño | Bytes verificados, `inline`. Con `?descargar=1` se entrega como adjunto. `ETag` y `Repr-Digest` llevan el SHA-256. Si es de otro usuario o no existe: `404`. |
+
+Las respuestas de compra de plan, cita y pedido (y sus listados) incluyen el campo
+`comprobante` con la URL del PDF. En la web aparecen como enlaces y en la pestaña
+**Mis archivos** de `micuenta.html`.
+
+La carpeta se configura con `ALMACENAMIENTO_DIR` (por defecto `backend/almacenamiento/`,
+ignorada por git). `npm run dev:memoria` usa una carpeta temporal que se borra al
+detenerlo. Las pruebas están en `test/archivos.test.js`.
+
 ## Semana 13: edición de perfil y foto de perfil
 
 La página privada `micuenta.html` incluye **Editar perfil** para actualizar nombre,

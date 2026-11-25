@@ -6,7 +6,7 @@ La URL local predeterminada es `http://127.0.0.1:3000`.
 
 ## Convenciones
 
-- Las entradas y respuestas son JSON, excepto la subida y descarga de fotos.
+- Las entradas y respuestas son JSON, excepto la subida y descarga de fotos y archivos.
   Para enviar JSON, usar `Content-Type: application/json`; el límite del cuerpo es **8 KiB**.
 - Los importes son números enteros en pesos colombianos (COP), sin formato monetario.
   Las fechas de respuesta se serializan como cadenas ISO 8601 en UTC.
@@ -150,10 +150,15 @@ GridFS, bucket `fotos`; no guarda archivos en el directorio público del proyect
 El navegador debe generar el `Content-Type` y boundary al enviar `FormData`.
 
 Los metadatos se almacenan en `fotos.files`, los fragmentos en `fotos.chunks` y
-`usuarios.foto` guarda `archivoId`, `url`, `tipo`, `tamano`, `subidaAt`.
-Los metadatos del archivo incluyen `usuarioId` y `tipo`. Cada subida genera un ID
-nuevo, actualiza la referencia del usuario e intenta borrar el archivo anterior.
-DELETE retira la referencia e intenta borrar los datos de GridFS.
+`usuarios.foto` guarda `archivoId`, `url`, `tipo`, `tamano`, `nombre`, `sha256`, `subidaAt`.
+En GridFS el fichero se llama `<uuid>.<ext>` (nunca con el nombre que envía el
+navegador) y sus metadatos incluyen `usuarioId`, `tipo` y `sha256`. Cada subida
+también se registra en la colección `archivos` (módulo `perfil`; ver
+[Archivos y comprobantes](#archivos-y-comprobantes-persistencia-dual)).
+Cada subida genera un ID nuevo, actualiza la referencia del usuario e intenta
+borrar el archivo anterior y su registro. DELETE retira la referencia e intenta
+borrar los datos de GridFS y su registro. La descarga pública incluye
+`ETag` con el SHA-256.
 
 La descarga es pública para quien conoce la URL y devuelve `Content-Type` según
 el formato detectado, `Content-Length` y `Cache-Control: public, max-age=31536000,
@@ -173,7 +178,8 @@ seguir en la caché del navegador tras reemplazar o eliminar la foto.
 inclusión de entrenador y máximo de personas), `meses`, `precioPagado`, `fechaInicio`,
 `fechaFin`, `estado`, `renovacionAutomatica`, `pagos`, `createdAt` y `updatedAt`.
 Cada pago contiene `referencia`, `monto`, `fecha`, `tipo` (`compra`, `extension`,
-`renovacion`). El estado es `activa`, `vencida` o `reemplazada`.
+`renovacion`) y `comprobante`: la URL de su PDF (`/api/archivos/:id`), o `null` si
+aún no se generó. El estado es `activa`, `vencida` o `reemplazada`.
 
 Comprar el mismo plan amplía su vencimiento; comprar otro reemplaza la membresía
 activa y comienza el nuevo periodo. Consultar o modificar la membresía puede
@@ -195,8 +201,9 @@ Los índices únicos parciales evitan tanto ocupar dos veces al entrenador como
 reservar dos citas del mismo usuario a la misma hora. DELETE cambia el estado a
 `cancelada`; solo permite cancelar reservas futuras confirmadas del usuario actual.
 
-`Reserva` contiene `id`, `entrenadorId`, `entrenador` (nombre), `inicio`, `fin` y
-`estado` (`confirmada` o `cancelada`). El listado añade `imagen` del entrenador.
+`Reserva` contiene `id`, `entrenadorId`, `entrenador` (nombre), `inicio`, `fin`,
+`estado` (`confirmada` o `cancelada`) y `comprobante` (URL del PDF o `null`).
+El listado añade `imagen` del entrenador.
 
 ## Carrito y pedidos
 
@@ -215,12 +222,43 @@ se suman sus cantidades con un máximo de 20. Guardar el carrito no reserva stoc
 y `subtotal`. El servidor calcula precios y total usando el catálogo vigente;
 los productos inactivos o eliminados no aparecen al leer el carrito.
 
-`Pedido` contiene `id`, `items`, `total`, `estado`, `referencia` y `createdAt`.
+`Pedido` contiene `id`, `items`, `total`, `estado`, `referencia`, `createdAt` y
+`comprobante` (URL del PDF o `null`).
 Cada línea incluye `productoId`, `nombre`, `precioUnitario`, `cantidad`, `subtotal`.
 La creación devuelve estado `pagado` y una referencia `GF-...` de compra simulada.
 El esquema también admite `entregado` y `cancelado`, pero no se expone una ruta de
 cambio de estado. La compra descuenta stock y vacía el carrito dentro de una
 transacción; un conflicto de stock revierte la operación completa.
+
+## Archivos y comprobantes (persistencia dual)
+
+| Método | Ruta | Acceso | Recibe | Respuesta exitosa | Errores propios |
+|---|---|---|---|---|---|
+| `GET` | `/api/archivos` | Privada | Cookie. Query opcional `modulo`: `membresias`, `reservas`, `pedidos` o `perfil`. | `200` `{ archivos: Archivo[] }`, hasta 100, del más reciente al más antiguo. | `400` módulo inválido, `401`, `503`. |
+| `GET` | `/api/archivos/:id` | Solo el dueño | `id` de 24 caracteres hexadecimales. Query opcional `descargar=1`. | `200` con los bytes verificados y su `Content-Type`; `304` si `If-None-Match` coincide. | `401`, `404` ID inválido, inexistente o de otro usuario, `410` el fichero ya no existe y no se puede regenerar, `500` falla la verificación SHA-256, `503`. |
+
+Cada compra de plan (compra, extensión o renovación automática), cita y pedido
+genera un comprobante PDF. El fichero se guarda en disco, en
+`<ALMACENAMIENTO_DIR>/comprobantes/<uuid>.pdf`, y sus metadatos en la colección
+`archivos`. Un índice único `{ modulo, operacion }` garantiza un solo comprobante
+por operación. Antes de listar se generan los comprobantes que falten, por ejemplo
+de operaciones anteriores a esta función.
+
+`Archivo` contiene `id`, `nombre` (UUID + extensión), `titulo` (nombre legible),
+`tipo`, `peso` (bytes), `fecha`, `modulo`, `operacion` (referencia del pago o pedido,
+id de la cita o `foto-<id>`), `sha256`, `url` y `descarga` (`url?descargar=1`).
+La ruta interna del fichero y los datos del comprobante no se exponen.
+
+`GET /api/archivos/:id` recalcula el SHA-256 antes de responder. Si un comprobante
+no está en disco o fue alterado, lo regenera con los datos guardados y solo lo entrega
+si el hash coincide con el registrado. La respuesta incluye:
+
+- `Content-Disposition`: `inline` (o `attachment` con `descargar=1`), con el nombre
+  ASCII y el nombre UTF-8 completo (RFC 6266 / RFC 8187).
+- `ETag: "<sha256>"` y `Repr-Digest: sha-256=:<base64>:` (RFC 9530).
+- `Cache-Control: private, no-cache`.
+
+A cualquier otro usuario se le responde `404`, como si el archivo no existiera.
 
 ## Ejemplos de uso local
 
