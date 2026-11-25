@@ -29,4 +29,6 @@ export const config = {
   port,
   // Detrás del proxy HTTPS del hosting (Render): número de saltos de proxy en los que confiar.
   trustProxy: Number(process.env.TRUST_PROXY || 0),
+  // Carpeta de los comprobantes PDF. Por defecto backend/almacenamiento/ (ver database.js).
+  almacenamiento: process.env.ALMACENAMIENTO_DIR?.trim() || undefined,
 };

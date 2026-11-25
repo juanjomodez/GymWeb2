@@ -4,6 +4,7 @@ import { pipeline } from 'node:stream/promises';
 import multer from 'multer';
 import { ErrorNegocio, MESES_VALIDOS } from './database.js';
 import { MAX_FOTO, OBJETIVOS, TIPOS_FOTO } from './esquema.js';
+import { MODULOS } from './servicios/archivos.js';
 
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const esSlug = valor => typeof valor === 'string' && valor.length <= 60 && SLUG.test(valor);
@@ -118,6 +119,7 @@ export function setupApi(app, database, requireUser) {
     const foto = /^[a-f0-9]{24}$/.test(req.params.id) ? await database.abrirFoto(req.params.id) : null;
     if (!foto) return res.status(404).json({ message: 'Foto no encontrada.' });
     res.set({ 'Content-Type': foto.tipo, 'Content-Length': String(foto.tamano), 'Cache-Control': 'public, max-age=31536000, immutable', 'Content-Security-Policy': "default-src 'none'" });
+    if (foto.sha256) res.set('ETag', `"${foto.sha256}"`);
     // Si falla a mitad de envío ya no se puede responder con JSON: se corta la conexión.
     await pipeline(foto.stream, res).catch(() => res.destroy());
   }));
@@ -172,4 +174,38 @@ export function setupApi(app, database, requireUser) {
     const pedido = await database.crearPedido(req.user.id);
     res.status(201).json({ message: `Compra simulada realizada. Referencia ${pedido.referencia}.`, pedido });
   }));
+
+  // ---------- archivos (persistencia dual: ficheros + metadatos en MongoDB) ----------
+  app.get('/api/archivos', requireUser, manejar(async (req, res) => {
+    const { modulo } = req.query;
+    if (modulo !== undefined && !MODULOS.includes(modulo)) return invalido(res, `Módulo inválido. Usa: ${MODULOS.join(', ')}.`);
+    res.set('Cache-Control', 'no-store').json({ archivos: await database.listarArchivos(req.user.id, { modulo }) });
+  }));
+  // Solo el dueño puede abrirlo: a cualquier otro usuario se le responde 404, como si no existiera.
+  // ?descargar=1 lo entrega como adjunto; sin él, el navegador lo muestra (visor de PDF o imagen).
+  app.get('/api/archivos/:id', requireUser, manejar(async (req, res) => {
+    const resultado = /^[a-f0-9]{24}$/.test(req.params.id) ? await database.abrirArchivo(req.user.id, req.params.id) : null;
+    if (!resultado) return res.status(404).json({ message: 'Archivo no encontrado.' });
+    const { archivo, contenido } = resultado;
+    const descargar = req.query.descargar === '1' || req.query.descargar === 'true';
+    res.set({
+      'Content-Type': archivo.tipo,
+      'Content-Length': String(contenido.length),
+      'Content-Disposition': `${descargar ? 'attachment' : 'inline'}; ${nombreDescarga(archivo.titulo)}`,
+      'Cache-Control': 'private, no-cache',
+      // La huella SHA-256 viaja con la respuesta: el cliente puede comprobar que recibió el archivo íntegro.
+      ETag: `"${archivo.sha256}"`,
+      'Repr-Digest': `sha-256=:${Buffer.from(archivo.sha256, 'hex').toString('base64')}:`,
+    });
+    // El visor de PDF del navegador necesita poder ejecutarse; las imágenes se sirven sin permitir nada más.
+    if (archivo.tipo !== 'application/pdf') res.set('Content-Security-Policy', "default-src 'none'");
+    if (req.fresh) return res.status(304).end();
+    res.end(contenido);
+  }));
+}
+
+// Content-Disposition con nombre ASCII de respaldo y nombre UTF-8 completo (RFC 6266 / RFC 8187).
+function nombreDescarga(titulo) {
+  const ascii = titulo.normalize('NFD').replace(/[^\x20-\x7e]/g, '').replace(/["\\]/g, '') || 'archivo';
+  return `filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(titulo)}`;
 }

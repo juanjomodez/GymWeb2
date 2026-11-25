@@ -6,3 +6,6 @@ npm-debug.log*
 
 # Capturas, videos y material de presentación generados localmente
 capturas/
+
+# Comprobantes PDF generados por el backend (persistencia dual: ficheros + metadatos en MongoDB)
+backend/almacenamiento/

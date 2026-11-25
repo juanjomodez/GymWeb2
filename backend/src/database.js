@@ -1,15 +1,17 @@
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { GridFSBucket, MongoClient, ObjectId } from 'mongodb';
-import { asegurarEsquema } from './esquema.js';
+import { crearDisco, sha256 } from './almacenamiento/disco.js';
+import { ErrorNegocio } from './errores.js';
+import { EXTENSION_FOTO, asegurarEsquema } from './esquema.js';
+import { sumarMeses } from './fechas.js';
 import { sembrarCatalogo } from './catalogo.js';
+import { crearServicioArchivos } from './servicios/archivos.js';
 
-// Errores de reglas de negocio: la API los convierte en respuestas con su estado HTTP.
-export class ErrorNegocio extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
+export { ErrorNegocio, sumarMeses };
+
+// Carpeta por defecto de los ficheros (comprobantes PDF): backend/almacenamiento/. Se cambia con ALMACENAMIENTO_DIR.
+export const ALMACENAMIENTO_POR_DEFECTO = fileURLToPath(new URL('../almacenamiento/', import.meta.url));
 
 // El gimnasio está en Cali (UTC−5, sin horario de verano): las horas de los entrenadores son locales.
 const DESFASE_CALI = 5 * 60 * 60 * 1000;
@@ -20,16 +22,6 @@ export const MESES_VALIDOS = [1, 3, 6, 12];
 
 const referencia = () => `GF-${randomBytes(5).toString('hex').toUpperCase()}`;
 const comoId = id => (id instanceof ObjectId ? id : ObjectId.isValid(String(id)) ? new ObjectId(String(id)) : null);
-
-export function sumarMeses(fecha, meses) {
-  const d = new Date(fecha);
-  const dia = d.getUTCDate();
-  d.setUTCDate(1);
-  d.setUTCMonth(d.getUTCMonth() + meses);
-  const ultimo = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
-  d.setUTCDate(Math.min(dia, ultimo));
-  return d;
-}
 
 // Fecha "YYYY-MM-DD" + "HH:00" en hora de Cali → Date (UTC).
 const instante = (fecha, hora) => new Date(`${fecha}T${hora}:00-05:00`);
@@ -48,15 +40,31 @@ function publicoPerfil(u) {
 }
 const PROYECCION_PERFIL = { nombre: 1, correo: 1, telefono: 1, objetivo: 1, foto: 1 };
 
-function publicaMembresia(m) {
+// `comprobantes`: Map referencia del pago → URL de su comprobante PDF (si ya existe).
+function publicaMembresia(m, comprobantes = new Map()) {
   if (!m) return null;
   const { _id, usuarioId, pagos, ...resto } = m;
-  return { id: _id.toString(), ...resto, pagos: pagos.map(({ referencia: r, monto, fecha, tipo }) => ({ referencia: r, monto, fecha, tipo })) };
+  return {
+    id: _id.toString(), ...resto,
+    pagos: pagos.map(({ referencia: r, monto, fecha, tipo }) => ({ referencia: r, monto, fecha, tipo, comprobante: comprobantes.get(r) ?? null })),
+  };
 }
 
-export function createDatabase({ uri, database }) {
+// Los comprobantes son un efecto secundario: si fallan, la compra o la cita ya quedó guardada y no se revierte.
+// El error queda en el log y el comprobante se completa después (al abrir la sección o listar los archivos).
+async function intentar(descripcion, fn) {
+  try {
+    return await fn();
+  } catch (error) {
+    console.error(`[archivos] ${descripcion}:`, error.message);
+    return null;
+  }
+}
+
+export function createDatabase({ uri, database, almacenamiento = ALMACENAMIENTO_POR_DEFECTO }) {
   let client;
   let preparado;
+  const archivos = crearServicioArchivos({ disco: crearDisco(almacenamiento) });
   function getDb() {
     if (!uri) throw new Error('MONGODB_URI no configurada');
     client ??= new MongoClient(uri, {
@@ -167,31 +175,43 @@ export function createDatabase({ uri, database }) {
       );
       return publicoPerfil(u);
     },
-    // Guarda el archivo en GridFS (bucket `fotos`) y su referencia en el usuario; borra la foto anterior.
+    // Guarda la imagen en GridFS (bucket `fotos`) con nombre UUID y su SHA-256, registra sus metadatos en
+    // `archivos` y la enlaza en el usuario. Si algo falla se deshace lo hecho; al final borra la foto anterior.
     async guardarFotoPerfil(usuario, { buffer, tipo }) {
       const base = await db();
       const usuarioId = comoId(usuario);
       const bucket = new GridFSBucket(base, { bucketName: 'fotos' });
       const archivoId = new ObjectId();
+      const huella = sha256(buffer);
+      const nombre = `${randomUUID()}.${EXTENSION_FOTO[tipo]}`;
+      const subidaAt = new Date();
       await new Promise((resolve, reject) => {
-        bucket.openUploadStreamWithId(archivoId, `perfil-${usuarioId}`, { contentType: tipo, metadata: { usuarioId, tipo } })
+        bucket.openUploadStreamWithId(archivoId, nombre, { contentType: tipo, metadata: { usuarioId, tipo, sha256: huella } })
           .on('finish', resolve).on('error', reject).end(buffer);
       });
-      const foto = { archivoId, url: `/api/fotos/${archivoId}`, tipo, tamano: buffer.length, subidaAt: new Date() };
+      const deshacer = async () => {
+        await archivos.olvidarFoto(base, archivoId).catch(() => {});
+        await bucket.delete(archivoId).catch(() => {});
+      };
+      const foto = { archivoId, url: `/api/fotos/${archivoId}`, tipo, tamano: buffer.length, nombre, sha256: huella, subidaAt };
       let anterior;
       try {
+        await archivos.registrarFoto(base, { autor: usuarioId, archivoId, nombre, tipo, peso: buffer.length, sha256: huella, fecha: subidaAt });
         anterior = await base.collection('usuarios').findOneAndUpdate(
-          { _id: usuarioId }, { $set: { foto, updatedAt: foto.subidaAt } }, { projection: { foto: 1 } },
+          { _id: usuarioId }, { $set: { foto, updatedAt: subidaAt } }, { projection: { foto: 1 } },
         );
       } catch (error) {
-        await bucket.delete(archivoId).catch(() => {});
+        await deshacer();
         throw error;
       }
       if (!anterior) {
-        await bucket.delete(archivoId).catch(() => {});
+        await deshacer();
         throw new ErrorNegocio(404, 'Usuario no encontrado.');
       }
-      if (anterior.foto?.archivoId) await bucket.delete(anterior.foto.archivoId).catch(() => {});
+      if (anterior.foto?.archivoId) {
+        await bucket.delete(anterior.foto.archivoId).catch(() => {});
+        await archivos.olvidarFoto(base, anterior.foto.archivoId).catch(() => {});
+      }
       return this.obtenerPerfil(usuarioId);
     },
     async eliminarFotoPerfil(usuario) {
@@ -199,16 +219,22 @@ export function createDatabase({ uri, database }) {
       const anterior = await base.collection('usuarios').findOneAndUpdate(
         { _id: comoId(usuario) }, { $unset: { foto: '' }, $set: { updatedAt: new Date() } }, { projection: { foto: 1 } },
       );
-      if (anterior?.foto?.archivoId) await new GridFSBucket(base, { bucketName: 'fotos' }).delete(anterior.foto.archivoId).catch(() => {});
+      if (anterior?.foto?.archivoId) {
+        await new GridFSBucket(base, { bucketName: 'fotos' }).delete(anterior.foto.archivoId).catch(() => {});
+        await archivos.olvidarFoto(base, anterior.foto.archivoId).catch(() => {});
+      }
     },
-    // Devuelve { tipo, tamano, stream } o null si la foto no existe.
+    // Devuelve { tipo, tamano, sha256, stream } o null si la foto no existe.
     async abrirFoto(id) {
       const archivoId = comoId(id);
       if (!archivoId) return null;
       const bucket = new GridFSBucket(await db(), { bucketName: 'fotos' });
       const archivo = await bucket.find({ _id: archivoId }).next();
       if (!archivo) return null;
-      return { tipo: archivo.contentType ?? archivo.metadata?.tipo, tamano: archivo.length, stream: bucket.openDownloadStream(archivoId) };
+      return {
+        tipo: archivo.contentType ?? archivo.metadata?.tipo, tamano: archivo.length, sha256: archivo.metadata?.sha256 ?? null,
+        stream: bucket.openDownloadStream(archivoId),
+      };
     },
 
     // ---------- planes y membresías ----------
@@ -220,7 +246,11 @@ export function createDatabase({ uri, database }) {
       const usuarioId = comoId(usuario);
       await sincronizarMembresia(base, usuarioId);
       const historial = await base.collection('membresias').find({ usuarioId }).sort({ fechaInicio: -1 }).limit(20).toArray();
-      return { actual: publicaMembresia(historial.find(m => m.estado === 'activa')), historial: historial.map(publicaMembresia) };
+      // Genera los comprobantes que falten: renovaciones automáticas recién aplicadas o compras anteriores a esta función.
+      await intentar('comprobantes de membresía', () => archivos.deMembresias(base, usuarioId, historial));
+      const comprobantes = await archivos.urlsPorOperacion(base, 'membresias', historial.flatMap(m => m.pagos.map(p => p.referencia)));
+      const actual = historial.find(m => m.estado === 'activa');
+      return { actual: publicaMembresia(actual, comprobantes), historial: historial.map(m => publicaMembresia(m, comprobantes)) };
     },
     async comprarMembresia(usuario, planId, meses) {
       const usuarioId = comoId(usuario);
@@ -251,7 +281,11 @@ export function createDatabase({ uri, database }) {
         const { insertedId } = await membresias.insertOne(nueva, { session });
         return { ...nueva, _id: insertedId };
       });
-      return publicaMembresia(membresia);
+      // El comprobante se genera después de confirmar la transacción (los reintentos no deben escribir ficheros).
+      const base = await db();
+      await intentar('comprobante de membresía', () => archivos.deMembresias(base, usuarioId, [membresia]));
+      const comprobantes = await archivos.urlsPorOperacion(base, 'membresias', membresia.pagos.map(p => p.referencia));
+      return publicaMembresia(membresia, comprobantes);
     },
     async cambiarRenovacion(usuario, activar) {
       const base = await db();
@@ -263,7 +297,7 @@ export function createDatabase({ uri, database }) {
         { returnDocument: 'after' },
       );
       if (!m) throw new ErrorNegocio(404, 'No tienes una membresía activa.');
-      return publicaMembresia(m);
+      return publicaMembresia(m, await archivos.urlsPorOperacion(base, 'membresias', m.pagos.map(p => p.referencia)));
     },
 
     // ---------- entrenadores y reservas ----------
@@ -300,22 +334,29 @@ export function createDatabase({ uri, database }) {
       const futuras = await base.collection('reservas').countDocuments({ usuarioId, estado: 'confirmada', inicio: { $gt: new Date() } });
       if (futuras >= MAX_RESERVAS_FUTURAS) throw new ErrorNegocio(409, `Puedes tener hasta ${MAX_RESERVAS_FUTURAS} citas pendientes.`);
       const reserva = { usuarioId, entrenadorId, inicio, fin: new Date(inicio.getTime() + HORA), estado: 'confirmada', createdAt: new Date() };
+      let insertedId;
       try {
-        const { insertedId } = await base.collection('reservas').insertOne(reserva);
-        return { id: insertedId.toString(), entrenadorId, entrenador: entrenador.nombre, inicio, fin: reserva.fin, estado: reserva.estado };
+        ({ insertedId } = await base.collection('reservas').insertOne(reserva));
       } catch (error) {
         if (error.code !== 11000) throw error;
         throw new ErrorNegocio(409, error.keyPattern?.usuarioId ? 'Ya tienes otra cita a esa hora.' : 'Ese horario acaba de ser reservado. Elige otro.');
       }
+      const id = insertedId.toString();
+      await intentar('comprobante de cita', () => archivos.deReservas(base, usuarioId, [{ ...reserva, _id: insertedId }]));
+      const comprobante = (await archivos.urlsPorOperacion(base, 'reservas', [id])).get(id) ?? null;
+      return { id, entrenadorId, entrenador: entrenador.nombre, inicio, fin: reserva.fin, estado: reserva.estado, comprobante };
     },
     async listarReservas(usuario) {
-      return (await db()).collection('reservas').aggregate([
+      const base = await db();
+      const reservas = await base.collection('reservas').aggregate([
         { $match: { usuarioId: comoId(usuario) } },
         { $sort: { inicio: -1 } },
         { $limit: 50 },
         { $lookup: { from: 'entrenadores', localField: 'entrenadorId', foreignField: '_id', as: 'e' } },
         { $project: { _id: 0, id: { $toString: '$_id' }, entrenadorId: 1, inicio: 1, fin: 1, estado: 1, entrenador: { $first: '$e.nombre' }, imagen: { $first: '$e.imagen' } } },
       ]).toArray();
+      const comprobantes = await archivos.urlsPorOperacion(base, 'reservas', reservas.map(r => r.id));
+      return reservas.map(r => ({ ...r, comprobante: comprobantes.get(r.id) ?? null }));
     },
     async cancelarReserva(usuario, reservaId) {
       const _id = comoId(reservaId);
@@ -364,7 +405,7 @@ export function createDatabase({ uri, database }) {
     },
     async crearPedido(usuario) {
       const usuarioId = comoId(usuario);
-      return transaccion(async (base, session) => {
+      const pedido = await transaccion(async (base, session) => {
         const { items, total } = await carritoDetallado(base, usuarioId, session);
         if (!items.length) throw new ErrorNegocio(400, 'Tu carrito está vacío.');
         for (const item of items) {
@@ -383,15 +424,34 @@ export function createDatabase({ uri, database }) {
         };
         const { insertedId } = await base.collection('pedidos').insertOne(pedido, { session });
         await base.collection('carritos').updateOne({ _id: usuarioId }, { $set: { items: [], updatedAt: new Date() } }, { session });
-        const { usuarioId: _omitido, ...publico } = pedido;
-        return { id: insertedId.toString(), ...publico };
+        return { ...pedido, _id: insertedId };
       });
+      const base = await db();
+      await intentar('comprobante de pedido', () => archivos.dePedidos(base, usuarioId, [pedido]));
+      const comprobante = (await archivos.urlsPorOperacion(base, 'pedidos', [pedido.referencia])).get(pedido.referencia) ?? null;
+      const { _id, usuarioId: _omitido, ...publico } = pedido;
+      return { id: _id.toString(), ...publico, comprobante };
     },
     async listarPedidos(usuario) {
-      const pedidos = await (await db()).collection('pedidos')
+      const base = await db();
+      const pedidos = await base.collection('pedidos')
         .find({ usuarioId: comoId(usuario) }, { projection: { usuarioId: 0 } })
         .sort({ createdAt: -1 }).limit(30).toArray();
-      return pedidos.map(({ _id, ...p }) => ({ id: _id.toString(), ...p }));
+      const comprobantes = await archivos.urlsPorOperacion(base, 'pedidos', pedidos.map(p => p.referencia));
+      return pedidos.map(({ _id, ...p }) => ({ id: _id.toString(), ...p, comprobante: comprobantes.get(p.referencia) ?? null }));
+    },
+
+    // ---------- archivos (comprobantes PDF y fotos de perfil) ----------
+    // Antes de listar se generan los comprobantes que falten (operaciones antiguas o generaciones fallidas).
+    async listarArchivos(usuario, { modulo } = {}) {
+      const base = await db();
+      const autor = comoId(usuario);
+      await intentar('sincronizar comprobantes', () => archivos.sincronizar(base, autor));
+      return archivos.listar(base, autor, { modulo });
+    },
+    // { archivo, contenido } verificado con SHA-256, o null si no existe o es de otro usuario.
+    async abrirArchivo(usuario, id) {
+      return archivos.abrir(await db(), comoId(usuario), id);
     },
 
     async preparar() {

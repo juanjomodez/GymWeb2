@@ -2,18 +2,22 @@
 // La primera ejecución descarga el binario oficial de mongod (mongodb-memory-server).
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { MongoClient } from 'mongodb';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { createApp } from '../src/app.js';
 import { createDatabase } from '../src/database.js';
 import { asegurarEsquema } from '../src/esquema.js';
 
-let replica, database, server, base, cliente, db;
+let replica, database, server, base, cliente, db, almacenamiento;
 
 before(async () => {
   replica = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
   const uri = replica.getUri();
-  database = createDatabase({ uri, database: 'GymTest' });
+  almacenamiento = await mkdtemp(path.join(tmpdir(), 'gymflow-api-'));
+  database = createDatabase({ uri, database: 'GymTest', almacenamiento });
   server = createApp(database).listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   base = `http://127.0.0.1:${server.address().port}`;
@@ -26,6 +30,7 @@ after(async () => {
   await database.close();
   await cliente.close();
   await replica.stop();
+  await rm(almacenamiento, { recursive: true, force: true });
 });
 
 // Cliente HTTP con su propia cookie de sesión.
