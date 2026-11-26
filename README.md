@@ -1,3 +1,82 @@
+# GymFlow
+
+## Ejecutar el proyecto
+
+Se necesita Git y Node.js 22.13 o superior con npm. Render usa Node.js 22.14.0.
+Express sirve la web y la API desde el mismo origen.
+
+```sh
+git clone https://github.com/juanjomodez/GymWeb2.git
+cd GymWeb2
+git switch Santiago
+cd backend
+npm ci
+npm run dev:memoria -- --seed
+```
+
+Abre [GymFlow local](http://127.0.0.1:3000). Este modo inicia un MongoDB
+temporal sin Atlas. `--seed` añade una [cuenta de demostración](backend/README.md#cuenta-demo-npm-run-seed)
+con membresía, cita y pedido. Los datos se descartan al detener el proceso.
+
+### MongoDB persistente
+
+Desde `backend/`, copia `.env.example` a `.env` con
+`Copy-Item .env.example .env` en PowerShell o `cp .env.example .env` en Bash.
+Configura una base de desarrollo en MongoDB Atlas o un replica set de MongoDB.
+Las compras y las reservas requieren transacciones.
+
+| Variable | Valor o propósito |
+| --- | --- |
+| `MONGODB_URI` | Cadena privada de conexión. Se requiere para la base persistente. |
+| `MONGODB_DB` | Nombre de base. Predeterminado `GymWeb`. |
+| `HOST` | Interfaz de escucha. En local `127.0.0.1` y en Render `0.0.0.0`. |
+| `PORT` | Puerto HTTP. En local `3000`. Render lo proporciona. |
+| `TRUST_PROXY` | `0` en local y `1` detrás del proxy de Render. |
+| `CORS_ORIGINS` | Orígenes adicionales separados por comas. Vacío para el mismo origen. |
+| `MONGODB_DNS_SERVERS` | Resolutores DNS opcionales separados por comas para las consultas SRV de Atlas. |
+
+```sh
+npm run db:preparar
+npm run seed
+npm start
+```
+
+`npm run seed` es opcional y escribe datos de demostración en la base configurada.
+Usa una base de desarrollo y guarda la URI fuera de Git.
+
+| Comando desde `backend/` | Uso |
+| --- | --- |
+| `npm start` | Arranca el servidor. |
+| `npm run dev` | Reinicia el servidor al cambiar archivos del backend. |
+| `npm run dev:memoria` | Ejecuta la aplicación con un MongoDB temporal. |
+| `npm run db:preparar` | Aplica validadores e índices y carga el catálogo. |
+| `npm run seed` | Prepara la cuenta demo en la base configurada. |
+| `npm test` | Ejecuta las pruebas, incluidas las de integración con MongoDB temporal. |
+| `npm run test:frontend` | Prueba la navegación y los errores de red con Playwright y un MongoDB temporal. Ejecuta antes `npx playwright-core install chromium`. |
+| `npm run verify:atlas` | Comprueba el registro real de una cuenta de prueba contra la base configurada. |
+
+### Render
+
+El [Blueprint de Render](render.yaml) toma la rama `main`, instala las
+dependencias de producción y sirve la web y la API. Para configurar el servicio
+en Render, abre **New → Blueprint**, conecta este repositorio y añade
+`MONGODB_URI` como variable del servicio. La cuenta de MongoDB necesita permisos
+de lectura y escritura en la base configurada y Atlas debe permitir la conexión
+desde Render.
+
+Producción usa [gymflow-2rkj.onrender.com](https://gymflow-2rkj.onrender.com).
+Después de un despliegue, comprueba [la portada](https://gymflow-2rkj.onrender.com/),
+[`/vivo`](https://gymflow-2rkj.onrender.com/vivo),
+[`/health`](https://gymflow-2rkj.onrender.com/health) y
+[`/api/planes`](https://gymflow-2rkj.onrender.com/api/planes).
+`/vivo` verifica HTTP, `/health` hace ping a MongoDB y el catálogo verifica
+que la aplicación puede leer los datos. Los tres endpoints deben devolver HTTP 200.
+
+[Contrato de la API](docs/API.md) · [Diagrama ER](docs/diagrama-er.md) ·
+[Guía del backend](backend/README.md)
+
+## Descripción del proyecto
+
 Nombre del proyecto: Gym Flow
 Integrantes: Juan Jose Mosquera Bermudez - Santiago Lopez Gomez - Alejandro Pantoja Obando - Jesus David Albarracin Ortega - Yeferson David Casso Ruiz
 

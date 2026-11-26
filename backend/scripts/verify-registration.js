@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { MongoClient } from 'mongodb';
 import { config } from '../src/config.js';
-import { createDatabase } from '../src/database.js';
+import { crearServiciosMongo } from '../src/servicios/index.js';
 import { createApp } from '../src/app.js';
 
 const correo = `gym-check-${randomUUID()}@example.invalid`;
 const password = randomUUID();
-const db = createDatabase(config);
+const db = crearServiciosMongo(config);
 const client = new MongoClient(config.uri, { serverSelectionTimeoutMS: 5000, timeoutMS: 5000 });
 const server = createApp(db).listen(0, '127.0.0.1');
 await new Promise(resolve => server.once('listening', resolve));

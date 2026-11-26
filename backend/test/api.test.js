@@ -8,7 +8,7 @@ import path from 'node:path';
 import { MongoClient } from 'mongodb';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { createApp } from '../src/app.js';
-import { createDatabase } from '../src/database.js';
+import { crearServiciosMongo } from '../src/servicios/index.js';
 import { asegurarEsquema } from '../src/esquema.js';
 
 let replica, database, server, base, cliente, db, almacenamiento;
@@ -17,7 +17,7 @@ before(async () => {
   replica = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
   const uri = replica.getUri();
   almacenamiento = await mkdtemp(path.join(tmpdir(), 'gymflow-api-'));
-  database = createDatabase({ uri, database: 'GymTest', almacenamiento });
+  database = crearServiciosMongo({ uri, database: 'GymTest', almacenamiento });
   server = createApp(database).listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   base = `http://127.0.0.1:${server.address().port}`;
@@ -76,6 +76,19 @@ test('esquema: colecciones con validador, índices clave y catálogo sembrado', 
   assert.deepEqual(fotosPorUsuario.key, { 'metadata.usuarioId': 1 });
   assert.equal(Boolean(fotosPorUsuario.unique), false);
   assert.equal(indicesFotos.filter(i => i.name === 'fotos_por_usuario').length, 1);
+  // El listado de productos activos puede obtenerse por precio sin una etapa SORT adicional.
+  const productos = db.collection('productos');
+  const indicesProductos = await productos.indexes();
+  const indicePrecio = indicesProductos.find(i => i.name === 'productos_activos_precio');
+  assert.ok(indicePrecio);
+  assert.deepEqual(Object.entries(indicePrecio.key), [['activo', 1], ['precio', -1]]);
+  assert.equal(Boolean(indicePrecio.unique), false);
+  assert.equal(indicesProductos.filter(i => i.name === 'productos_activos_precio').length, 1);
+  const explicacion = await productos.find({ activo: true }).sort({ precio: -1 })
+    .hint('productos_activos_precio').explain('queryPlanner');
+  const planProductos = JSON.stringify(explicacion.queryPlanner.winningPlan);
+  assert.match(planProductos, /"indexName":"productos_activos_precio"/);
+  assert.doesNotMatch(planProductos, /"stage":"SORT"/);
   assert.equal(await db.collection('planes').countDocuments(), 4);
   assert.equal(await db.collection('maquinas').countDocuments(), 10);
   await assert.rejects(db.collection('productos').insertOne({ _id: 'malo', nombre: 'X', precio: -5 }), { code: 121 });

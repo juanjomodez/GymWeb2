@@ -15,8 +15,9 @@ sigue en GridFS, pero ahora también se registra con nombre UUID y SHA-256.
 | `src/almacenamiento/pdf.js` | Disco | Genera el PDF sin dependencias. Es **determinista**: los mismos datos producen los mismos bytes. |
 | `src/almacenamiento/disco.js` | Disco | Escribe en `backend/almacenamiento/comprobantes/<uuid>.pdf` de forma atómica (temporal + `rename`) y rechaza rutas fuera de la raíz. |
 | `src/servicios/comprobantes.js` | — | Arma los datos de cada comprobante (membresía, cita, pedido) y los dibuja. |
-| `src/servicios/archivos.js` | Disco + MongoDB | Emite los comprobantes (uno por operación), los lista, verifica su SHA-256 y los regenera si faltan. |
-| `src/repositorios/archivos.js` | MongoDB | Solo las consultas a la colección `archivos`. |
+| `src/servicios/archivos.servicio.js` | Disco + MongoDB | Emite los comprobantes (uno por operación), los lista, verifica su SHA-256 y los regenera si faltan. |
+| `src/repositorios/archivos.repositorio.js` | MongoDB | Solo las consultas a la colección `archivos`. |
+| `src/controladores/archivos.controlador.js` | HTTP | `GET /api/archivos` y `GET /api/archivos/:id` (cabeceras `ETag`, `Repr-Digest` y `Content-Disposition`). |
 
 **Colección `archivos`** (validada con `$jsonSchema`):
 
@@ -129,9 +130,8 @@ configuración o conexión antes de esperar respuestas exitosas del catálogo y 
 `npm test`, desde `backend/`, ejecuta las pruebas de perfil con base simulada y las
 de integración existentes con MongoDB temporal. La prueba de esquema comprueba
 la clave del índice de fotos y que repetir la preparación no lo duplique.
-Las pruebas de persistencia, reemplazo y borrado de archivos con MongoDB y la
-actualización del diagrama ER siguen detalladas en
-[docs/semana13-pendientes.md](../docs/semana13-pendientes.md).
+La suite también comprueba la persistencia, el reemplazo y el borrado de fotos
+contra GridFS con MongoDB temporal.
 
 ## Publicar en la web (Render + MongoDB Atlas)
 
@@ -171,12 +171,19 @@ validador `$jsonSchema` (`validationLevel: strict`), sus índices y el catálogo
 | `entrenadores` | especialidad, zona, horario semanal (hora de Cali) | — |
 | `reservas` | usuario, entrenador, inicio/fin, estado | **un horario de entrenador no se reserva dos veces** (único parcial) |
 | `rutinas` | objetivo, nivel, ejercicios con series y músculos | por objetivo |
-| `productos` | precio, imagen, stock | — |
+| `productos` | precio, imagen, stock | `productos_activos` por activo/categoría y `productos_activos_precio` por activo/precio descendente |
 | `carritos` | `_id` = usuario, productos y cantidades | máx. 30 productos, 1–20 unidades |
 | `pedidos` | líneas con precio congelado, total, referencia | referencia única |
 | `maquinas` | datos de `js/maquinas.js` (fuente única) | por área |
 
-Reglas de negocio (en `src/database.js`):
+El índice `productos_activos_precio`, con clave `{ activo: 1, precio: -1 }`, corresponde
+a la consulta del catálogo de productos activos ordenados de mayor a menor precio.
+Se crea desde `src/esquema.js` al preparar la base: al iniciar el backend, en el modo
+en memoria o con `npm run db:preparar` contra la base configurada. La preparación
+puede repetirse sin duplicar el índice. La prueba de integración comprueba también
+que ese índice permite atender el filtro y orden sin una etapa `SORT` adicional.
+
+Reglas de negocio (en `src/servicios/`):
 
 - **Compra de membresía** (transacción): mismo plan → se suma el tiempo; otro plan → la anterior
   queda `reemplazada` y la nueva empieza hoy. Duraciones de 1, 3, 6 o 12 meses.
@@ -208,6 +215,55 @@ npm run dev:memoria
 Arranca la web en http://127.0.0.1:3000 con un MongoDB temporal en memoria (los datos se pierden al
 cerrarlo). La primera vez descarga el binario oficial de `mongod`. `npm test` usa el mismo mecanismo
 para las pruebas de integración (esquema, membresías, reservas, carrito y pedidos).
+
+## Cuenta demo: `npm run seed`
+
+Desde `backend/`, con `MONGODB_URI` y `MONGODB_DB` configuradas en `.env`:
+
+```powershell
+npm run seed
+npm start
+```
+
+El comando prepara el esquema y catálogo y carga una cuenta de demostración:
+
+| Dato | Valor |
+|---|---|
+| Correo | `demo@gymflow.test` |
+| Contraseña de demostración | `GymFlowDemo2026!` |
+| Rol | `cliente` |
+| Membresía inicial | Premium, 1 mes, sin renovación automática |
+| Cita | Un horario futuro disponible de los próximos 30 días, en hora de Cali/Bogotá |
+| Compra | Una unidad de Shaker; si no tiene stock, otro producto disponible. Pago simulado. |
+
+Abrir `http://127.0.0.1:3000/login.html`, iniciar sesión con estas credenciales y
+revisar **Mi cuenta**: membresía, reservas y pedidos. El comando imprime también
+el horario ISO de la cita y la referencia de la compra.
+
+Para probar sin Atlas, iniciar una base temporal con esos mismos datos:
+
+```powershell
+npm run dev:memoria -- --seed
+```
+
+Este modo sirve la web y conserva los datos solo mientras está encendido. Se pierde
+la base al detenerlo. `npm run seed` utiliza la base indicada en `.env`; no modifica
+la base temporal de otro proceso. El inicio habitual sin `--seed` conserva su comportamiento.
+
+Se reutilizan los servicios y repositorios de la aplicación. La cuenta, la membresía,
+la cita y la compra se cargan en una transacción: si no hay stock u horario, se
+revierte esa carga. El esquema y catálogo se preparan antes de la transacción.
+
+Repetir el comando conserva la membresía vigente con entrenador, la cita futura y
+la compra existente: no vuelve a descontar stock ni duplica esos registros. Si la
+cita pasó o se canceló, agenda otra; si ya no hay membresía activa con entrenador,
+compra de nuevo Premium. También se comprueban ejecuciones simultáneas.
+
+El seed reconoce su cuenta mediante un ID reservado y el correo demo. Si ese correo
+pertenece a otro usuario, o se modificó el rol o contraseña de la cuenta demo, falla
+sin reemplazar esas credenciales. Las cuentas de otros usuarios se conservan.
+Las pruebas de `test/seed.test.js` verifican login, relaciones, repetición del comando,
+stock, rollback y concurrencia con MongoDB temporal.
 
 ## Fase 3: inicio de sesión y Mi cuenta
 
@@ -291,17 +347,32 @@ Abrir la portada desde Express permite cargar los catálogos y usar las funcione
 de cuenta; abrir los HTML como archivos locales no permite consultar la API.
 
 - `src/config.js`: configuración local.
-- `src/database.js`: pool del driver, persistencia, reglas de negocio, GridFS y ping real.
+- `src/database.js`: conexión del driver, preparación inicial, ping, cierre y transacciones.
+- `src/repositorios/`: consultas a MongoDB por colección. `fotos.repositorio.js` usa GridFS
+  para `fotos.files`; los fragmentos de `fotos.chunks` los administra el driver.
+- `src/servicios/`: reglas de usuarios/perfil, membresías, reservas y tienda. Aquí se
+  calculan vencimientos, renovaciones, horarios, precios y totales, y se coordinan las compras.
+- `src/servicios/index.js`: compone los repositorios y servicios mediante
+  `crearServicios(conexion)` o `crearServiciosMongo(config)`, utilizado por el servidor,
+  el modo en memoria y la verificación de Atlas.
 - `src/esquema.js`: validadores, migración de rol e índices de las colecciones.
-- `src/api.js`: catálogo, perfil, fotos, membresías, reservas, carrito y pedidos.
-- `src/auth.js`: sesiones, cookies, control de origen y protección de rutas.
-- `src/app.js`: composición de rutas, registro, archivos públicos y respuestas ante fallos.
+- `src/rutas/`: rutas de la API y de las páginas públicas y privadas.
+- `src/controladores/`: respuestas HTTP y llamada a los servicios.
+- `src/middlewares/`: autenticación, seguridad, subida de fotos y manejo de errores.
+- `src/validaciones/`: esquemas y validación de los datos de entrada.
+- `src/app.js`: composición de Express y sus capas.
 - `src/server.js`: inicio y cierre del servidor.
 - `test/health.test.js`: pruebas HTTP y fallo del driver real.
 
-Las colecciones implementadas están en la tabla de la fase 4. Los pendientes de
-pruebas de fotos y diagrama ER están en el checklist de semana 13. Un ping confirma
-conectividad, pero no valida permisos de escritura ni la existencia de colecciones.
+El flujo de una petición es: ruta → validación/autenticación → controlador → servicio
+→ repositorio → MongoDB. Los repositorios reciben la sesión de MongoDB cuando una
+operación pertenece a una transacción. Las compras de membresía y los pedidos
+conservan esa sesión en todas sus consultas y escrituras; un fallo de stock revierte
+los descuentos y evita registrar el pedido o vaciar el carrito parcialmente.
+
+Las colecciones implementadas están en la tabla de la fase 4. El diagrama ER está
+en [el diagrama ER](../docs/diagrama-er.md). Un ping confirma conectividad, pero no valida
+permisos de escritura ni la existencia de colecciones.
 
 ## Preparar MongoDB Atlas
 

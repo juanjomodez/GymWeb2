@@ -26,23 +26,25 @@ function el(etiqueta, { clase, texto, attrs } = {}, ...hijos) {
 }
 
 async function api(ruta, { metodo = "GET", cuerpo } = {}) {
+    const multipart = cuerpo instanceof FormData;
     let respuesta;
     try {
         respuesta = await fetch(ruta, {
             method: metodo,
             cache: "no-store",
-            headers: cuerpo ? { "Content-Type": "application/json" } : {},
-            body: cuerpo ? JSON.stringify(cuerpo) : undefined
+            signal: AbortSignal.timeout(15000),
+            headers: cuerpo && !multipart ? { "Content-Type": "application/json" } : {},
+            body: multipart || !cuerpo ? cuerpo : JSON.stringify(cuerpo)
         });
+        if (respuesta.status === 401) {
+            location.replace(`login.html?volver=${encodeURIComponent(location.pathname + location.search + location.hash)}`);
+            return new Promise(() => { });
+        }
+        const body = await respuesta.json();
+        return { ok: respuesta.ok, status: respuesta.status, body };
     } catch {
-        return { ok: false, status: 0, body: { message: "No se pudo contactar con el servidor." } };
+        return { ok: false, status: 0, body: { message: "No se obtuvo respuesta del servidor. Revisa tu conexión." } };
     }
-    if (respuesta.status === 401) {
-        location.replace(`login.html?volver=${encodeURIComponent(location.pathname + location.search + location.hash)}`);
-        return new Promise(() => { });
-    }
-    const body = await respuesta.json().catch(() => ({}));
-    return { ok: respuesta.ok, status: respuesta.status, body };
 }
 
 function avisar(nodo, texto, tipo = "info") {
@@ -63,13 +65,27 @@ function avisarConComprobante(nodo, texto, url) {
 }
 const TIPOS_PAGO = { compra: "Compra", extension: "Extensión", renovacion: "Renovación automática" };
 
+async function conControlesBloqueados(controles, accion) {
+    const habilitados = [...controles].filter((control) => !control.disabled);
+    habilitados.forEach((control) => { control.disabled = true; });
+    try {
+        return await accion();
+    } finally {
+        habilitados.forEach((control) => { control.disabled = false; });
+    }
+}
+
 // ---------- pestañas ----------
 const pestanas = [...document.querySelectorAll(".cuenta-pestanas [role=tab]")];
 const cargadores = {};
 const cargados = new Set();
 
-function mostrarPanel(id, { foco = false } = {}) {
+function mostrarPanel(id, { foco = false, navegar = false } = {}) {
     if (!pestanas.some((p) => p.dataset.panel === id)) id = "membresia";
+    const pestana = pestanas.find((p) => p.dataset.panel === id);
+    if (navegar && pestana.getAttribute("aria-selected") !== "true") {
+        history.pushState(null, "", `${location.pathname}${location.search}#${id}`);
+    }
     for (const p of pestanas) {
         const activa = p.dataset.panel === id;
         p.setAttribute("aria-selected", String(activa));
@@ -77,7 +93,6 @@ function mostrarPanel(id, { foco = false } = {}) {
         document.getElementById(p.dataset.panel).hidden = !activa;
         if (activa && foco) p.focus();
     }
-    history.replaceState(null, "", `${location.pathname}${location.search}#${id}`);
     if (!cargados.has(id)) {
         cargados.add(id);
         cargadores[id]?.();
@@ -85,22 +100,32 @@ function mostrarPanel(id, { foco = false } = {}) {
 }
 
 pestanas.forEach((p, i) => {
-    p.addEventListener("click", () => mostrarPanel(p.dataset.panel));
+    p.addEventListener("click", () => mostrarPanel(p.dataset.panel, { navegar: true }));
     p.addEventListener("keydown", (e) => {
         const dir = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
         if (!dir) return;
         e.preventDefault();
-        mostrarPanel(pestanas[(i + dir + pestanas.length) % pestanas.length].dataset.panel, { foco: true });
+        mostrarPanel(pestanas[(i + dir + pestanas.length) % pestanas.length].dataset.panel, { foco: true, navegar: true });
     });
 });
-window.addEventListener("hashchange", () => mostrarPanel(location.hash.slice(1)));
+function restaurarPanel() {
+    const consulta = new URLSearchParams(location.search);
+    mostrarPanel(location.hash.slice(1) || (consulta.get("entrenador") ? "reservas" : consulta.get("rutina") ? "rutinas" : "membresia"));
+}
+window.addEventListener("popstate", restaurarPanel);
+window.addEventListener("hashchange", restaurarPanel);
 
 // ---------- membresía ----------
 let planes = [];
 let membresiaActual = null;
 const tarjetaMembresia = $(".membresia-estado");
 const dialogo = $("#dialogo-compra");
+const formCompra = $("form", dialogo);
+const avisoCompra = $(".aviso", formCompra);
+const confirmarCompra = $('button[value="comprar"]', formCompra);
 let planEnCompra = null;
+
+const accionesMembresia = () => document.querySelectorAll(".membresia-estado button, .planes-cuenta button");
 
 function diasRestantes(fin) {
     return Math.max(0, Math.ceil((new Date(fin) - Date.now()) / 864e5));
@@ -144,16 +169,17 @@ function pintarMembresia() {
 }
 
 async function cambiarRenovacion(boton) {
+    if (boton.disabled) return;
     const activar = boton.getAttribute("aria-checked") !== "true";
-    boton.disabled = true;
-    const r = await api("/api/membresia", { metodo: "PATCH", cuerpo: { renovacionAutomatica: activar } });
+    avisar($(".aviso-renovacion"), "Guardando la renovación…");
+    const r = await conControlesBloqueados(accionesMembresia(), () =>
+        api("/api/membresia", { metodo: "PATCH", cuerpo: { renovacionAutomatica: activar } }));
     if (r.ok) {
         membresiaActual = r.body.membresia;
         pintarMembresia();
         avisar($(".aviso-renovacion"), r.body.message, "exito");
         $(".interruptor")?.focus();
     } else {
-        boton.disabled = false;
         avisar($(".aviso-renovacion"), r.body.message || "No se pudo cambiar la renovación.", "error");
     }
 }
@@ -194,6 +220,7 @@ function actualizarTotalCompra() {
 
 function abrirCompra(plan) {
     planEnCompra = plan;
+    avisar(avisoCompra, "");
     const extension = membresiaActual?.planId === plan.id;
     $(".compra-plan").textContent = extension
         ? `Vas a extender tu ${plan.nombre}. El tiempo se suma a tu fecha de finalización.`
@@ -204,23 +231,40 @@ function abrirCompra(plan) {
     dialogo.showModal();
 }
 $("#compra-meses").addEventListener("change", actualizarTotalCompra);
-dialogo.addEventListener("close", async () => {
-    if (dialogo.returnValue !== "comprar" || !planEnCompra) return;
-    avisar(mensajeGeneral, "Procesando el pago simulado…");
-    const r = await api("/api/membresias", { metodo: "POST", cuerpo: { planId: planEnCompra.id, meses: Number($("#compra-meses").value) } });
-    if (r.ok) avisarConComprobante(mensajeGeneral, r.body.message, r.body.membresia.pagos.at(-1)?.comprobante);
-    else avisar(mensajeGeneral, r.body.message || "No se pudo completar la compra.", "error");
-    if (r.ok) {
+dialogo.addEventListener("cancel", (e) => {
+    if (confirmarCompra.disabled) e.preventDefault();
+});
+formCompra.addEventListener("submit", async (e) => {
+    if (e.submitter?.value === "cancelar") return;
+    e.preventDefault();
+    if (!planEnCompra || confirmarCompra.disabled) return;
+    avisar(avisoCompra, "Procesando el pago simulado…");
+    await conControlesBloqueados([...formCompra.elements, ...accionesMembresia()], async () => {
+        const r = await api("/api/membresias", { metodo: "POST", cuerpo: { planId: planEnCompra.id, meses: Number($("#compra-meses").value) } });
+        if (!r.ok) {
+            avisar(avisoCompra, r.body.message || "No se pudo completar la compra.", "error");
+            return;
+        }
+        dialogo.close();
+        avisarConComprobante(mensajeGeneral, r.body.message || "Compra completada.", r.body.membresia?.pagos.at(-1)?.comprobante);
         cargados.delete("archivos");
         await cargarMembresia();
+    });
+    if (dialogo.open) {
+        confirmarCompra.focus();
+        return;
     }
     mensajeGeneral.scrollIntoView({ behavior: "smooth", block: "center" });
 });
 
 async function cargarMembresia() {
+    tarjetaMembresia.setAttribute("aria-busy", "true");
     const [rPlanes, rMembresia] = await Promise.all([api("/api/planes"), api("/api/membresia")]);
+    tarjetaMembresia.setAttribute("aria-busy", "false");
     if (!rPlanes.ok || !rMembresia.ok) {
-        tarjetaMembresia.replaceChildren(el("p", { clase: "aviso", texto: "No se pudo cargar tu membresía. Intenta recargar la página.", attrs: { "data-tipo": "error" } }));
+        const fallo = rPlanes.ok ? rMembresia : rPlanes;
+        tarjetaMembresia.replaceChildren(el("p", { clase: "aviso", texto: fallo.body.message || "No se pudo cargar tu membresía. Intenta recargar la página.", attrs: { "data-tipo": "error", role: "status" } }));
+        $(".planes-cuenta").replaceChildren();
         return;
     }
     planes = rPlanes.body.planes;
@@ -229,7 +273,7 @@ async function cargarMembresia() {
     pintarPlanes();
     pintarHistorial(rMembresia.body.historial);
     // Llegó desde "Elegir este plan" en la portada: se abre la confirmación una sola vez.
-    const elegido = planes.find((p) => p.id === parametros.get("plan"));
+    const elegido = !$("#membresia").hidden && planes.find((p) => p.id === parametros.get("plan"));
     if (elegido) {
         parametros.delete("plan");
         history.replaceState(null, "", `${location.pathname}${parametros.size ? `?${parametros}` : ""}${location.hash}`);
@@ -246,17 +290,24 @@ const listaHorarios = $(".lista-horarios");
 const botonReservar = $("button[type=submit]", formReserva);
 const avisoReserva = $(".aviso", formReserva);
 let entrenadores = [];
+let consultaHorarios = 0;
+let reservaPendiente = false;
 
 const hoyCali = (desplazDias = 0) => new Date(Date.now() - 5 * 36e5 + desplazDias * 864e5).toISOString().slice(0, 10);
 
 async function cargarHorarios() {
+    const consulta = ++consultaHorarios;
     botonReservar.disabled = true;
     const id = selectEntrenador.value;
     const e = entrenadores.find((x) => x.id === id);
     $(".entrenador-detalle").textContent = e ? `${e.especialidad} · ${e.zona}` : "";
-    if (!id || !inputFecha.value) return;
+    if (!id || !inputFecha.value) {
+        listaHorarios.textContent = "Selecciona un entrenador y una fecha.";
+        return;
+    }
     listaHorarios.replaceChildren(el("p", { clase: "cuenta-nota", texto: "Buscando horarios…" }));
     const r = await api(`/api/entrenadores/${encodeURIComponent(id)}/disponibilidad?fecha=${inputFecha.value}`);
+    if (consulta !== consultaHorarios) return;
     if (!r.ok) {
         listaHorarios.replaceChildren(el("p", { clase: "cuenta-nota", texto: r.body.message || "No se pudieron cargar los horarios." }));
         return;
@@ -269,7 +320,7 @@ async function cargarHorarios() {
     listaHorarios.replaceChildren(...horarios.map((h) => {
         const input = el("input", { attrs: { type: "radio", name: "horario", value: h.inicio, id: `h-${h.hora}` } });
         input.disabled = !h.disponible;
-        input.addEventListener("change", () => { botonReservar.disabled = false; });
+        input.addEventListener("change", () => { botonReservar.disabled = reservaPendiente; });
         return el("label", { clase: "horario", attrs: { for: `h-${h.hora}` } }, input, el("span", { texto: h.disponible ? h.hora : `${h.hora} · ocupado` }));
     }));
 }
@@ -278,7 +329,7 @@ async function cargarReservas() {
     const r = await api("/api/reservas");
     const lista = $(".lista-reservas");
     if (!r.ok) {
-        lista.replaceChildren(el("li", { texto: "No se pudieron cargar tus citas." }));
+        lista.replaceChildren(el("li", { texto: r.body.message || "No se pudieron cargar tus citas." }));
         return;
     }
     if (!r.body.reservas.length) {
@@ -294,12 +345,14 @@ async function cargarReservas() {
             enlaceComprobante(res.comprobante, "Comprobante", `Comprobante de la cita con ${res.entrenador}`));
         if (futura) {
             const cancelar = el("button", { clase: "boton-fantasma", texto: "Cancelar", attrs: { type: "button", "aria-label": `Cancelar cita con ${res.entrenador}` } });
+            cancelar.disabled = reservaPendiente;
             cancelar.addEventListener("click", async () => {
-                if (!confirm(`¿Cancelar la cita con ${res.entrenador}?`)) return;
-                cancelar.disabled = true;
-                const c = await api(`/api/reservas/${res.id}`, { metodo: "DELETE" });
-                avisar(avisoReserva, c.body.message || "No se pudo cancelar.", c.ok ? "exito" : "error");
-                await Promise.all([cargarReservas(), cargarHorarios()]);
+                if (reservaPendiente || !confirm(`¿Cancelar la cita con ${res.entrenador}?`)) return;
+                await gestionarReserva("Cancelando la cita…", async () => {
+                    const c = await api(`/api/reservas/${res.id}`, { metodo: "DELETE" });
+                    avisar(avisoReserva, c.body.message || "No se pudo cancelar.", c.ok ? "exito" : "error");
+                    return c.ok;
+                });
             });
             item.append(cancelar);
         }
@@ -307,24 +360,36 @@ async function cargarReservas() {
     }));
 }
 
+async function gestionarReserva(mensaje, accion) {
+    reservaPendiente = true;
+    avisar(avisoReserva, mensaje);
+    const controles = [...formReserva.elements, ...document.querySelectorAll(".lista-reservas button")];
+    try {
+        await conControlesBloqueados(controles, async () => {
+            if (await accion()) await Promise.all([cargarReservas(), cargarHorarios()]);
+        });
+    } finally {
+        reservaPendiente = false;
+        document.querySelectorAll(".lista-reservas button").forEach((boton) => { boton.disabled = false; });
+        botonReservar.disabled = !$("input[name=horario]:checked", formReserva);
+    }
+}
+
 formReserva.addEventListener("submit", async (e) => {
     e.preventDefault();
     const elegido = $("input[name=horario]:checked", formReserva);
-    if (!elegido) return;
-    botonReservar.disabled = true;
-    const r = await api("/api/reservas", { metodo: "POST", cuerpo: { entrenadorId: selectEntrenador.value, inicio: elegido.value } });
-    if (r.ok) {
-        avisarConComprobante(avisoReserva, `Cita confirmada: ${fechaHora.format(new Date(r.body.reserva.inicio))} con ${r.body.reserva.entrenador}.`, r.body.reserva.comprobante);
-        cargados.delete("archivos");
-    } else {
-        const conEnlace = r.status === 403;
-        avisar(avisoReserva, r.body.message || "No se pudo reservar.", "error");
-        if (conEnlace) {
-            const a = el("a", { texto: " Ver planes Premium", attrs: { href: "#membresia" } });
-            avisoReserva.append(a);
+    if (!elegido || botonReservar.disabled || reservaPendiente) return;
+    await gestionarReserva("Reservando la cita…", async () => {
+        const r = await api("/api/reservas", { metodo: "POST", cuerpo: { entrenadorId: selectEntrenador.value, inicio: elegido.value } });
+        if (r.ok) {
+            avisarConComprobante(avisoReserva, `Cita confirmada: ${fechaHora.format(new Date(r.body.reserva.inicio))} con ${r.body.reserva.entrenador}.`, r.body.reserva.comprobante);
+            cargados.delete("archivos");
+        } else {
+            avisar(avisoReserva, r.body.message || "No se pudo reservar.", "error");
+            if (r.status === 403) avisoReserva.append(el("a", { texto: " Ver planes Premium", attrs: { href: "#membresia" } }));
         }
-    }
-    await Promise.all([cargarReservas(), cargarHorarios()]);
+        return r.ok || r.status === 409;
+    });
 });
 selectEntrenador.addEventListener("change", cargarHorarios);
 inputFecha.addEventListener("change", cargarHorarios);
@@ -333,23 +398,31 @@ cargadores.reservas = async () => {
     inputFecha.min = hoyCali();
     inputFecha.max = hoyCali(29);
     inputFecha.value = hoyCali(1);
-    const r = await api("/api/entrenadores");
+    listaHorarios.replaceChildren(el("p", { clase: "cuenta-nota", texto: "Cargando entrenadores…" }));
+    const r = await conControlesBloqueados([selectEntrenador, inputFecha], () => api("/api/entrenadores"));
     entrenadores = r.ok ? r.body.entrenadores : [];
     selectEntrenador.replaceChildren(...entrenadores.map((e) => el("option", { texto: `${e.nombre} — ${e.especialidad}`, attrs: { value: e.id } })));
     const pedido = parametros.get("entrenador");
     if (entrenadores.some((e) => e.id === pedido)) selectEntrenador.value = pedido;
-    await Promise.all([cargarHorarios(), cargarReservas()]);
+    if (!entrenadores.length) {
+        listaHorarios.textContent = r.body.message || (r.ok ? "No hay entrenadores disponibles." : "No se pudieron cargar los entrenadores.");
+    }
+    await Promise.all([entrenadores.length ? cargarHorarios() : null, cargarReservas()]);
 };
 
 // ---------- rutinas ----------
 const contRutinas = $(".rutinas-cuenta");
 const detalleRutina = $(".rutina-detalle");
+const filtrosRutinas = document.querySelectorAll(".filtros-rutinas button");
+const accionesRutinas = () => [...filtrosRutinas, ...contRutinas.querySelectorAll("button")];
 
 async function cargarRutinas(objetivo = "") {
-    document.querySelectorAll(".filtros-rutinas button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.objetivo === objetivo)));
-    const r = await api(`/api/rutinas${objetivo ? `?objetivo=${objetivo}` : ""}`);
+    filtrosRutinas.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.objetivo === objetivo)));
+    detalleRutina.hidden = true;
+    contRutinas.replaceChildren(el("p", { texto: "Cargando rutinas…", attrs: { role: "status" } }));
+    const r = await conControlesBloqueados(accionesRutinas(), () => api(`/api/rutinas${objetivo ? `?objetivo=${objetivo}` : ""}`));
     if (!r.ok) {
-        contRutinas.replaceChildren(el("p", { texto: "No se pudieron cargar las rutinas." }));
+        contRutinas.replaceChildren(el("p", { texto: r.body.message || "No se pudieron cargar las rutinas.", attrs: { role: "status" } }));
         return;
     }
     contRutinas.replaceChildren(...r.body.rutinas.map((rut) => {
@@ -365,8 +438,13 @@ async function cargarRutinas(objetivo = "") {
 }
 
 async function abrirRutina(id) {
-    const r = await api(`/api/rutinas/${encodeURIComponent(id)}`);
-    if (!r.ok) return;
+    detalleRutina.hidden = false;
+    detalleRutina.replaceChildren(el("p", { texto: "Cargando la rutina…", attrs: { role: "status" } }));
+    const r = await conControlesBloqueados(accionesRutinas(), () => api(`/api/rutinas/${encodeURIComponent(id)}`));
+    if (!r.ok) {
+        detalleRutina.replaceChildren(el("p", { clase: "aviso", texto: r.body.message || "No se pudo cargar la rutina.", attrs: { role: "status", "data-tipo": "error" } }));
+        return;
+    }
     const rut = r.body.rutina;
     const cerrar = el("button", { clase: "boton-fantasma", texto: "Cerrar", attrs: { type: "button" } });
     cerrar.addEventListener("click", () => { detalleRutina.hidden = true; });
@@ -386,22 +464,25 @@ async function abrirRutina(id) {
         el("p", { clase: "cuenta-nota", texto: `${rut.descripcion} ${rut.diasPorSemana} días por semana, unos ${rut.duracionMin} minutos por sesión.` }),
         el("div", { clase: "tabla-scroll" }, tabla));
     detalleRutina.hidden = false;
-    detalleRutina.focus({ preventScroll: true });
-    detalleRutina.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (!$("#rutinas").hidden) {
+        detalleRutina.focus({ preventScroll: true });
+        detalleRutina.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
 }
 
-document.querySelectorAll(".filtros-rutinas button").forEach((b) => b.addEventListener("click", () => cargarRutinas(b.dataset.objetivo)));
+filtrosRutinas.forEach((b) => b.addEventListener("click", () => cargarRutinas(b.dataset.objetivo)));
 cargadores.rutinas = async () => {
     await cargarRutinas();
-    if (parametros.get("rutina")) abrirRutina(parametros.get("rutina"));
+    if (parametros.get("rutina")) await abrirRutina(parametros.get("rutina"));
 };
 
 // ---------- pedidos ----------
 cargadores.pedidos = async () => {
-    const r = await api("/api/pedidos");
     const lista = $(".lista-pedidos");
+    lista.replaceChildren(el("li", { texto: "Cargando tus compras…", attrs: { role: "status" } }));
+    const r = await api("/api/pedidos");
     if (!r.ok) {
-        lista.replaceChildren(el("li", { texto: "No se pudieron cargar tus compras." }));
+        lista.replaceChildren(el("li", { texto: r.body.message || "No se pudieron cargar tus compras.", attrs: { role: "status" } }));
         return;
     }
     lista.replaceChildren(...(r.body.pedidos.length ? r.body.pedidos.map((p) => el("li", { clase: "tarjeta pedido" },
@@ -468,6 +549,9 @@ const formFoto = $(".form-foto");
 const formPerfil = $(".form-perfil");
 const inputFoto = $("#perfil-archivo");
 const botonQuitarFoto = $("#perfil-quitar-foto");
+const botonSubirFoto = $("button[type=submit]", formFoto);
+const botonGuardarPerfil = $("button[type=submit]", formPerfil);
+const controlesPerfil = [...formFoto.elements, ...formPerfil.elements];
 const MAX_FOTO = 2 * 1024 * 1024;
 
 function pintarFoto(url) {
@@ -494,25 +578,16 @@ inputFoto.addEventListener("change", () => {
 
 formFoto.addEventListener("submit", async (e) => {
     e.preventDefault();
+    if (botonSubirFoto.disabled) return;
     const aviso = $(".aviso", formFoto);
     const archivo = inputFoto.files[0];
     if (!archivo) return avisar(aviso, "Elige una imagen primero.", "error");
     if (archivo.size > MAX_FOTO) return avisar(aviso, "La foto no puede pesar más de 2 MB.", "error");
     const datos = new FormData();
     datos.append("foto", archivo);
-    const boton = $("button[type=submit]", formFoto);
-    boton.disabled = true;
     avisar(aviso, "Subiendo…");
-    let r;
-    try {
-        // Sin Content-Type: el navegador añade multipart/form-data con su boundary.
-        const respuesta = await fetch("/api/perfil/foto", { method: "POST", body: datos, cache: "no-store" });
-        if (respuesta.status === 401) return location.replace(`login.html?volver=${encodeURIComponent(location.pathname + "#perfil")}`);
-        r = { ok: respuesta.ok, body: await respuesta.json().catch(() => ({})) };
-    } catch {
-        r = { ok: false, body: { message: "No se pudo contactar con el servidor." } };
-    }
-    boton.disabled = false;
+    const r = await conControlesBloqueados(controlesPerfil, () =>
+        api("/api/perfil/foto", { metodo: "POST", cuerpo: datos }));
     avisar(aviso, r.body.message ?? "No se pudo subir la foto.", r.ok ? "exito" : "error");
     if (r.ok) {
         formFoto.reset();
@@ -522,10 +597,10 @@ formFoto.addEventListener("submit", async (e) => {
 });
 
 botonQuitarFoto.addEventListener("click", async () => {
+    if (botonQuitarFoto.disabled) return;
     const aviso = $(".aviso", formFoto);
-    botonQuitarFoto.disabled = true;
-    const r = await api("/api/perfil/foto", { metodo: "DELETE" });
-    botonQuitarFoto.disabled = false;
+    avisar(aviso, "Quitando la foto…");
+    const r = await conControlesBloqueados(controlesPerfil, () => api("/api/perfil/foto", { metodo: "DELETE" }));
     avisar(aviso, r.body.message ?? "No se pudo quitar la foto.", r.ok ? "exito" : "error");
     if (r.ok) {
         pintarFoto(null);
@@ -535,44 +610,50 @@ botonQuitarFoto.addEventListener("click", async () => {
 
 formPerfil.addEventListener("submit", async (e) => {
     e.preventDefault();
+    if (botonGuardarPerfil.disabled) return;
     const aviso = $(".aviso", formPerfil);
-    const boton = $("button[type=submit]", formPerfil);
-    boton.disabled = true;
-    const r = await api("/api/perfil", {
+    avisar(aviso, "Guardando tu perfil…");
+    const r = await conControlesBloqueados(controlesPerfil, () => api("/api/perfil", {
         metodo: "PATCH",
         cuerpo: { nombre: $("#perfil-nombre").value, telefono: $("#perfil-telefono").value, objetivo: $("#perfil-objetivo").value }
-    });
-    boton.disabled = false;
+    }));
     avisar(aviso, r.body.message ?? "No se pudo guardar.", r.ok ? "exito" : "error");
     if (r.ok) pintarPerfil(r.body.perfil);
 });
 
 cargadores.perfil = async () => {
-    const r = await api("/api/perfil");
-    if (r.ok) pintarPerfil(r.body.perfil);
-    else avisar($(".aviso", formPerfil), "No se pudo cargar tu perfil.", "error");
+    const aviso = $(".aviso", formPerfil);
+    avisar(aviso, "Cargando tu perfil…");
+    const r = await conControlesBloqueados(controlesPerfil, () => api("/api/perfil"));
+    if (r.ok) {
+        pintarPerfil(r.body.perfil);
+        avisar(aviso, "");
+    } else avisar(aviso, r.body.message || "No se pudo cargar tu perfil.", "error");
 };
 
 // ---------- sesión ----------
 const botonSalir = $("#cerrar-sesion");
 botonSalir.addEventListener("click", async () => {
+    if (botonSalir.disabled) return;
     botonSalir.disabled = true;
+    avisar(mensajeGeneral, "Cerrando sesión…");
     const r = await api("/api/logout", { metodo: "POST" });
     if (r.ok) location.replace("login.html");
     else {
         botonSalir.disabled = false;
-        avisar(mensajeGeneral, "No se pudo cerrar sesión. Intenta nuevamente.", "error");
+        avisar(mensajeGeneral, r.body.message || "No se pudo cerrar sesión. Intenta nuevamente.", "error");
     }
 });
+
+restaurarPanel();
 
 (async () => {
     const r = await api("/api/me");
     if (r.ok) {
         $("#cuenta-nombre").textContent = r.body.usuario.nombre.split(" ")[0];
         $("#cuenta-correo").textContent = r.body.usuario.correo;
-        pintarFoto(r.body.usuario.fotoUrl ?? null);
+        if (!cargados.has("perfil")) pintarFoto(r.body.usuario.fotoUrl ?? null);
     } else {
-        avisar(mensajeGeneral, "No se pudo cargar tu cuenta. Intenta recargar la página.", "error");
+        avisar(mensajeGeneral, r.body.message || "No se pudo cargar tu cuenta. Intenta recargar la página.", "error");
     }
-    mostrarPanel(location.hash.slice(1) || (parametros.get("entrenador") ? "reservas" : parametros.get("rutina") ? "rutinas" : "membresia"));
 })();

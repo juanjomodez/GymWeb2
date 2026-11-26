@@ -10,9 +10,11 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "node --test",
+    "test:frontend": "node e2e/frontend.mjs",
     "verify:atlas": "node scripts/verify-registration.js",
     "db:preparar": "node scripts/preparar-db.js",
-    "dev:memoria": "node scripts/dev-memoria.js"
+    "dev:memoria": "node scripts/dev-memoria.js",
+    "seed": "node scripts/seed.js"
   },
   "dependencies": {
     "compression": "^1.8.1",
@@ -21,6 +23,7 @@
     "multer": "^2.5.0"
   },
   "devDependencies": {
-    "mongodb-memory-server": "^10.1.4"
+    "mongodb-memory-server": "^10.1.4",
+    "playwright-core": "1.65.1"
   }
 }

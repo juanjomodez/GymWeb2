@@ -10,7 +10,7 @@ import path from 'node:path';
 import { GridFSBucket, MongoClient, ObjectId } from 'mongodb';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { createApp } from '../src/app.js';
-import { createDatabase } from '../src/database.js';
+import { crearServiciosMongo } from '../src/servicios/index.js';
 import { asegurarEsquema } from '../src/esquema.js';
 import { crearDisco } from '../src/almacenamiento/disco.js';
 import { datosPedido, dibujarComprobante } from '../src/servicios/comprobantes.js';
@@ -27,7 +27,7 @@ before(async () => {
   replica = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
   const uri = replica.getUri();
   almacenamiento = await mkdtemp(path.join(tmpdir(), 'gymflow-archivos-'));
-  database = createDatabase({ uri, database: 'GymArchivos', almacenamiento });
+  database = crearServiciosMongo({ uri, database: 'GymArchivos', almacenamiento });
   server = createApp(database).listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   base = `http://127.0.0.1:${server.address().port}`;

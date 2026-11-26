@@ -120,7 +120,7 @@ function setupHomeCatalogs() {
             setupScrollAnimations(section);
         } catch {
             status.textContent = servidorDisponible
-                ? `No se pudieron cargar los ${id}. `
+                ? `No se pudieron cargar los ${id}. Comprueba tu conexión e intenta de nuevo. `
                 : "Abre la página desde el servidor del proyecto para consultar el catálogo. ";
             const retry = catalogElement("button", "Volver a cargar", "boton-fantasma");
             retry.type = "button";
@@ -138,7 +138,10 @@ function setupHomeCatalogs() {
 let sessionPromise;
 function getSession() {
     sessionPromise ??= servidorDisponible
-        ? fetch("/api/sesion", { cache: "no-store" }).then((r) => (r.ok ? r.json() : { usuario: null })).then((d) => d.usuario).catch(() => null)
+        ? fetch("/api/sesion", { cache: "no-store", signal: AbortSignal.timeout(15000) }).then(async (response) => {
+            if (!response.ok) throw new Error("No se pudo comprobar la sesión.");
+            return (await response.json()).usuario;
+        })
         : Promise.resolve(null);
     return sessionPromise;
 }
@@ -207,7 +210,7 @@ function setupScrollAnimations(root = document) {
 async function setupSessionLinks() {
     const links = document.querySelectorAll("[data-enlace-cuenta]");
     if (!links.length) return;
-    const user = await getSession();
+    const user = await getSession().catch(() => null);
     if (!user) return;
     links.forEach((link) => {
         link.href = "micuenta.html";
@@ -288,7 +291,8 @@ function setupProductCart(productos) {
 
     const cart = new Map();
     let loggedIn = false;
-    let syncTimer = 0;
+    let busy = false;
+    let needsCartReload = false;
     const cartButton = document.createElement("button");
     cartButton.className = "carrito-flotante";
     cartButton.type = "button";
@@ -344,6 +348,7 @@ function setupProductCart(productos) {
     const payButton = panel.querySelector(".carrito-pagar");
     const note = panel.querySelector(".carrito-nota");
     const feedback = panel.querySelector(".carrito-feedback");
+    const productFeedback = createStatusMessage(productSection, "carrito-feedback");
     const currency = new Intl.NumberFormat("es-CO", {
         style: "currency",
         currency: "COP",
@@ -357,20 +362,59 @@ function setupProductCart(productos) {
         cartButton.setAttribute("aria-expanded", String(open));
         panel.setAttribute("aria-hidden", String(!open));
         document.body.classList.toggle("carrito-bloqueo-scroll", open);
+        productFeedback.textContent = !open && (busy || feedback.dataset.tipo === "error") ? feedback.textContent : "";
         if (open) panel.querySelector(".carrito-cerrar").focus();
         else cartButton.focus();
     };
 
     const itemsForApi = () => [...cart].map(([productoId, item]) => ({ productoId, cantidad: item.quantity }));
 
+    function setCartFeedback(message, type = "") {
+        feedback.dataset.tipo = type;
+        feedback.textContent = message;
+        productFeedback.dataset.tipo = type;
+        productFeedback.textContent = panel.inert ? message : "";
+    }
+
+    function updateCartControls() {
+        const locked = busy || needsCartReload;
+        payButton.disabled = locked;
+        itemList.querySelectorAll("[data-cart-action]").forEach((button) => {
+            const item = cart.get(button.closest(".carrito-item").dataset.productoId);
+            button.disabled = locked || (button.dataset.cartAction === "increase" && item.quantity >= 20);
+        });
+        productSection.querySelectorAll("article[data-producto-id] button").forEach((button) => {
+            const product = catalog.get(button.closest("article").dataset.productoId);
+            button.disabled = locked || product.stock <= 0;
+        });
+    }
+
+    async function withCartBusy(message, action) {
+        busy = true;
+        updateCartControls();
+        setCartFeedback(message);
+        try {
+            await action();
+        } finally {
+            busy = false;
+            updateCartControls();
+        }
+    }
+
     // Con sesión el carrito se guarda en MongoDB; sin sesión, en este navegador.
-    const persist = () => {
+    const persist = async () => {
         if (!loggedIn) {
             writeLocalCart(itemsForApi());
             return;
         }
-        window.clearTimeout(syncTimer);
-        syncTimer = window.setTimeout(() => syncServer(itemsForApi()), 350);
+        await withCartBusy("Guardando el carrito…", async () => {
+            try {
+                await syncServer(itemsForApi());
+                setCartFeedback("");
+            } catch (error) {
+                setCartFeedback(error.message, "error");
+            }
+        });
     };
 
     const applyServerCart = ({ items }) => {
@@ -381,13 +425,24 @@ function setupProductCart(productos) {
     };
 
     async function syncServer(items) {
+        let response;
         try {
-            const response = await fetch("/api/carrito", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }) });
-            if (response.status === 401) { loggedIn = false; writeLocalCart(items); return; }
-            if (!response.ok) throw new Error();
+            response = await fetch("/api/carrito", {
+                method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ items }),
+                signal: AbortSignal.timeout(15000)
+            });
         } catch {
-            delete feedback.dataset.tipo;
-            feedback.textContent = "No se pudo guardar el carrito. Revisa tu conexión.";
+            throw new Error("No se pudo guardar el carrito. Revisa tu conexión.");
+        }
+        if (response.status === 401) {
+            loggedIn = false;
+            writeLocalCart(items);
+            renderCart();
+            throw new Error("Tu sesión venció. Inicia sesión para guardar tu carrito.");
+        }
+        if (!response.ok) {
+            const result = await response.json().catch(() => ({}));
+            throw new Error(result.message || "No se pudo guardar el carrito.");
         }
     }
 
@@ -442,6 +497,7 @@ function setupProductCart(productos) {
         });
 
         totalLabel.textContent = currency.format(total);
+        updateCartControls();
     };
 
     cartButton.addEventListener("click", () => setPanelOpen(!panel.classList.contains("carrito-abierto")));
@@ -451,11 +507,11 @@ function setupProductCart(productos) {
         if (event.key === "Escape" && panel.classList.contains("carrito-abierto")) setPanelOpen(false);
     });
 
-    productSection.addEventListener("click", (event) => {
+    productSection.addEventListener("click", async (event) => {
         const button = event.target.closest("button");
         const id = button?.closest("article[data-producto-id]")?.dataset.productoId;
         const product = catalog.get(id);
-        if (!product || button.disabled || product.stock <= 0 || !Number.isFinite(product.precio)) return;
+        if (!product || busy || button.disabled || product.stock <= 0 || !Number.isFinite(product.precio)) return;
 
         const currentItem = cart.get(id);
         cart.set(id, {
@@ -464,9 +520,8 @@ function setupProductCart(productos) {
             image: product.imagen,
             quantity: Math.min(20, (currentItem?.quantity || 0) + 1)
         });
-        feedback.textContent = "";
+        setCartFeedback("");
         renderCart();
-        persist();
         cartButton.classList.remove("carrito-rebote");
         void cartButton.offsetWidth;
         cartButton.classList.add("carrito-rebote");
@@ -474,11 +529,12 @@ function setupProductCart(productos) {
         window.setTimeout(() => {
             if (button.isConnected) button.textContent = "Agregar al carrito";
         }, 850);
+        await persist();
     });
 
-    panel.addEventListener("click", (event) => {
+    panel.addEventListener("click", async (event) => {
         const control = event.target.closest("[data-cart-action]");
-        if (!control) return;
+        if (!control || busy || control.disabled) return;
         const id = control.closest(".carrito-item")?.dataset.productoId;
         const item = cart.get(id);
         if (!item) return;
@@ -490,52 +546,57 @@ function setupProductCart(productos) {
         } else if (control.dataset.cartAction === "increase") {
             item.quantity = Math.min(20, item.quantity + 1);
         }
-        feedback.textContent = "";
+        setCartFeedback("");
         renderCart();
-        persist();
+        await persist();
         // Tras re-renderizar, el foco vuelve al mismo control si sigue existiendo.
-        panel.querySelector(`.carrito-item[data-producto-id="${id}"] [data-cart-action="${control.dataset.cartAction}"]`)?.focus();
+        if (!panel.inert && document.activeElement === document.body) {
+            panel.querySelector(`.carrito-item[data-producto-id="${id}"] [data-cart-action="${control.dataset.cartAction}"]`)?.focus();
+        }
     });
 
     payButton.addEventListener("click", async () => {
+        if (payButton.disabled || !cart.size) return;
         if (!loggedIn) {
             writeLocalCart(itemsForApi());
             window.location.assign(`login.html?volver=${encodeURIComponent("/index.html#productos")}`);
             return;
         }
-        payButton.disabled = true;
-        delete feedback.dataset.tipo;
-        feedback.textContent = "Procesando el pago simulado…";
-        try {
-            window.clearTimeout(syncTimer);
-            await syncServer(itemsForApi());
-            const response = await fetch("/api/pedidos", { method: "POST" });
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.message);
-            cart.clear();
-            renderCart();
-            feedback.textContent = "";
-            feedback.dataset.tipo = "exito";
-            const done = document.createElement("span");
-            done.textContent = `${result.message} `;
-            const link = document.createElement("a");
-            link.href = "micuenta.html#pedidos";
-            link.textContent = "Ver mis compras";
-            feedback.append(done, link);
-            // Comprobante PDF del pedido (se abre en otra pestaña con el visor del navegador).
-            if (result.pedido?.comprobante) {
-                const pdf = document.createElement("a");
-                pdf.href = result.pedido.comprobante;
-                pdf.target = "_blank";
-                pdf.rel = "noopener";
-                pdf.textContent = "Ver comprobante (PDF)";
-                feedback.append(" · ", pdf);
+        await withCartBusy("Procesando el pago simulado…", async () => {
+            try {
+                await syncServer(itemsForApi());
+            } catch (error) {
+                setCartFeedback(error.message, "error");
+                return;
             }
-        } catch (error) {
-            feedback.textContent = error.message || "No se pudo completar la compra. Intenta nuevamente.";
-        } finally {
-            payButton.disabled = false;
-        }
+            try {
+                const response = await fetch("/api/pedidos", { method: "POST", signal: AbortSignal.timeout(15000) });
+                const result = await response.json();
+                if (!response.ok) {
+                    setCartFeedback(result.message || "No se pudo completar la compra.", "error");
+                    return;
+                }
+                cart.clear();
+                renderCart();
+                setCartFeedback(`${result.message || "Compra realizada."} `, "exito");
+                const link = document.createElement("a");
+                link.href = "micuenta.html#pedidos";
+                link.textContent = "Ver mis compras";
+                feedback.append(link);
+                // Comprobante PDF del pedido (se abre en otra pestaña con el visor del navegador).
+                if (result.pedido?.comprobante) {
+                    const pdf = document.createElement("a");
+                    pdf.href = result.pedido.comprobante;
+                    pdf.target = "_blank";
+                    pdf.rel = "noopener";
+                    pdf.textContent = "Ver comprobante (PDF)";
+                    feedback.append(" · ", pdf);
+                }
+            } catch {
+                needsCartReload = true;
+                setCartFeedback("No se recibió confirmación del pago. Revisa Mis compras y vuelve a cargar la página antes de intentarlo.", "error");
+            }
+        });
     });
 
     // Carga inicial: local para visitantes; con sesión, lo guardado en la cuenta más lo agregado antes de entrar.
@@ -544,11 +605,15 @@ function setupProductCart(productos) {
         if (product) cart.set(productoId, { name: product.nombre, price: product.precio, image: product.imagen, quantity: Math.min(20, cantidad) });
     }
     renderCart();
-    getSession().then(async (user) => {
-        if (!user) return;
+    void withCartBusy("Cargando tu carrito…", async () => {
         try {
-            const response = await fetch("/api/carrito", { cache: "no-store" });
-            if (!response.ok) return;
+            const user = await getSession();
+            if (!user) {
+                setCartFeedback("");
+                return;
+            }
+            const response = await fetch("/api/carrito", { cache: "no-store", signal: AbortSignal.timeout(15000) });
+            if (!response.ok) throw new Error();
             loggedIn = true;
             const server = await response.json();
             const local = itemsForApi();
@@ -559,11 +624,16 @@ function setupProductCart(productos) {
                     const current = cart.get(productoId);
                     cart.set(productoId, { name: product.nombre, price: product.precio, image: product.imagen, quantity: Math.min(20, (current?.quantity || 0) + cantidad) });
                 }
-                writeLocalCart([]);
                 await syncServer(itemsForApi());
+                writeLocalCart([]);
             }
+            setCartFeedback("");
+        } catch {
+            needsCartReload = true;
+            setCartFeedback("No se pudo sincronizar el carrito de tu cuenta. Revisa tu conexión y vuelve a cargar la página.", "error");
+        } finally {
             renderCart();
-        } catch { /* sin conexión: se mantiene el carrito local */ }
+        }
     });
 }
 
@@ -610,7 +680,14 @@ function setupAuthForms() {
             feedback.textContent = "Inicia sesión para continuar.";
         }
         // Si ya hay sesión, no tiene sentido mostrar el formulario.
-        getSession().then((user) => { if (user) window.location.replace(returnPath || "micuenta.html"); });
+        getSession().then((user) => {
+            if (user) window.location.replace(returnPath || "micuenta.html");
+        }).catch(() => {
+            if (!feedback.classList.contains("mensaje-visible")) {
+                feedback.classList.add("mensaje-visible");
+                feedback.textContent = "No se pudo comprobar tu sesión. Revisa tu conexión.";
+            }
+        });
     }
 
     form.addEventListener("submit", async (event) => {
@@ -630,6 +707,7 @@ function setupAuthForms() {
             const email = form.querySelector("#correo").value;
             const response = await fetch(registration ? "/api/usuarios" : "/api/login", {
                 method: "POST",
+                signal: AbortSignal.timeout(15000),
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     ...(registration ? { nombre: form.querySelector("#nombre").value } : {}),

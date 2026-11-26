@@ -1,9 +1,9 @@
 import { config } from './config.js';
-import { createDatabase } from './database.js';
+import { crearServiciosMongo } from './servicios/index.js';
 import { createApp } from './app.js';
 
-const database = createDatabase(config);
-const server = createApp(database, { trustProxy: config.trustProxy }).listen(config.port, config.host, () => {
+const database = crearServiciosMongo(config);
+const server = createApp(database, { trustProxy: config.trustProxy, corsOrigins: config.corsOrigins }).listen(config.port, config.host, () => {
   console.log(`Backend Gym: http://${config.host}:${config.port}/health`);
   if (!config.uri) console.warn('Falta MONGODB_URI en backend/.env; /health devolverá 503.');
   // Crea colecciones, validadores, índices y catálogo; si Atlas no responde se reintenta en la primera petición.
