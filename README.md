@@ -267,6 +267,8 @@ registra en la página (usuarios, membresías, reservas, pedidos) aparece ahí.
 | `carritos` | Carrito guardado de cada usuario |
 | `pedidos` | Compras realizadas en la tienda |
 | `maquinas` | Máquinas del gimnasio y músculos que trabajan |
+| `archivos` | Metadatos de los comprobantes PDF y fotos de perfil: nombre UUID, peso, ruta, fecha, autor, módulo, operación y SHA-256 (el PDF se guarda en el disco del servidor) |
+| `fotos.files` / `fotos.chunks` | Fotos de perfil (GridFS) |
 
 ### Opción 1: ver los datos desde el navegador (Atlas)
 

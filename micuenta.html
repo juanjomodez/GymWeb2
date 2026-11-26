@@ -47,6 +47,7 @@
             <button type="button" role="tab" id="pestana-reservas" aria-controls="reservas" data-panel="reservas">Entrenadores</button>
             <button type="button" role="tab" id="pestana-rutinas" aria-controls="rutinas" data-panel="rutinas">Rutinas</button>
             <button type="button" role="tab" id="pestana-pedidos" aria-controls="pedidos" data-panel="pedidos">Mis compras</button>
+            <button type="button" role="tab" id="pestana-archivos" aria-controls="archivos" data-panel="archivos">Mis archivos</button>
             <button type="button" role="tab" id="pestana-perfil" aria-controls="perfil" data-panel="perfil">Editar perfil</button>
         </nav>
 
@@ -110,6 +111,19 @@
         <section id="pedidos" class="cuenta-panel" role="tabpanel" aria-labelledby="pestana-pedidos" hidden>
             <ul class="lista-pedidos"></ul>
             <a class="boton" href="index.html#productos">Ir a la tienda</a>
+        </section>
+
+        <!-- MIS ARCHIVOS: comprobantes PDF guardados en el servidor y su huella SHA-256 -->
+        <section id="archivos" class="cuenta-panel" role="tabpanel" aria-labelledby="pestana-archivos" hidden>
+            <p class="cuenta-nota">Cada compra de plan, cita y pedido genera un comprobante en PDF. La huella SHA-256 permite comprobar que el archivo no ha sido modificado.</p>
+            <div class="filtros-rutinas filtros-archivos" role="group" aria-label="Filtrar archivos">
+                <button type="button" data-modulo="" aria-pressed="true">Todos</button>
+                <button type="button" data-modulo="membresias" aria-pressed="false">Membresías</button>
+                <button type="button" data-modulo="reservas" aria-pressed="false">Citas</button>
+                <button type="button" data-modulo="pedidos" aria-pressed="false">Tienda</button>
+                <button type="button" data-modulo="perfil" aria-pressed="false">Foto de perfil</button>
+            </div>
+            <ul class="lista-archivos" aria-live="polite"></ul>
         </section>
 
         <!-- EDITAR PERFIL (interfaz básica: pendiente de pulir el diseño) -->

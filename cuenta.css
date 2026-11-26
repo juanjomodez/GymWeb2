@@ -626,3 +626,161 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* ---------- comprobantes PDF y "Mis archivos" ---------- */
+.enlace-comprobante {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    color: var(--text);
+    font-size: .88rem;
+    font-weight: 750;
+    text-decoration: underline;
+    text-decoration-color: var(--red);
+    text-underline-offset: 4px;
+}
+
+.enlace-comprobante::before {
+    content: "PDF";
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: var(--red);
+    color: #fff;
+    font-size: .66rem;
+    letter-spacing: .06em;
+    text-decoration: none;
+}
+
+.enlace-comprobante:hover,
+.enlace-comprobante:focus-visible {
+    color: var(--red-bright);
+}
+
+.membresia-estado>.enlace-comprobante {
+    margin-top: 14px;
+}
+
+.lista-historial li>.pagos-historial {
+    display: grid;
+    grid-column: 1 / -1;
+    gap: 6px;
+    padding: 10px 0 0;
+    border-top: 1px solid var(--line);
+    list-style: none;
+}
+
+.pagos-historial li {
+    display: flex !important;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px 14px;
+    padding: 0 !important;
+    background: none !important;
+    color: var(--muted);
+}
+
+.pedido-pie {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+}
+
+.filtros-archivos {
+    margin: 16px 0 6px;
+}
+
+.lista-archivos {
+    display: grid;
+    gap: 12px;
+    margin-top: 14px;
+    list-style: none;
+}
+
+.lista-archivos[aria-busy="true"] {
+    opacity: .55;
+}
+
+.archivo {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.archivo-icono {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 52px;
+    height: 62px;
+    border-radius: 8px 18px 8px 8px;
+    background: linear-gradient(160deg, var(--red), var(--red-dark));
+    color: #fff;
+    font-size: .78rem;
+    font-weight: 850;
+    letter-spacing: .06em;
+}
+
+.archivo-icono-imagen {
+    background: linear-gradient(160deg, #3a3a44, #1f1f26);
+}
+
+.archivo-info {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.archivo-info strong {
+    overflow-wrap: anywhere;
+}
+
+.boton-hash {
+    align-self: flex-start;
+    min-height: 28px;
+    padding: 2px 10px;
+    border: 1px solid var(--line);
+    border-radius: 99px;
+    background: transparent;
+    color: var(--muted);
+    font: .76rem/1.2 ui-monospace, SFMono-Regular, Consolas, monospace;
+    cursor: pointer;
+}
+
+.boton-hash:hover,
+.boton-hash:focus-visible {
+    border-color: rgba(255, 255, 255, .3);
+    color: var(--text);
+}
+
+.archivo-acciones {
+    display: flex;
+    flex: none;
+    gap: 8px;
+}
+
+.archivo-acciones a {
+    min-height: 40px;
+    padding: 9px 16px;
+    font-size: .9rem;
+}
+
+@media (max-width: 700px) {
+    .archivo {
+        flex-wrap: wrap;
+    }
+
+    .archivo-acciones {
+        width: 100%;
+    }
+
+    .archivo-acciones a {
+        flex: 1;
+        text-align: center;
+    }
+}

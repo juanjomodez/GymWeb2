@@ -1,4 +1,6 @@
 // Esquema de GymWeb: validadores $jsonSchema e índices de cada colección.
+import { createHash, randomUUID } from 'node:crypto';
+import { GridFSBucket } from 'mongodb';
 
 const texto = (min, max) => ({ bsonType: 'string', minLength: min, maxLength: max });
 const entero = (minimum, maximum) => ({ bsonType: ['int', 'long'], minimum, ...(maximum === undefined ? {} : { maximum }) });
@@ -6,6 +8,9 @@ const fecha = { bsonType: 'date' };
 const slug = { bsonType: 'string', pattern: '^[a-z0-9]+(-[a-z0-9]+)*$', maxLength: 60 };
 export const TIPOS_FOTO = ['image/jpeg', 'image/png', 'image/webp'];
 export const MAX_FOTO = 2 * 1024 * 1024;
+export const EXTENSION_FOTO = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
+const SHA256 = { bsonType: 'string', pattern: '^[a-f0-9]{64}$' };
 const MUSCULOS = ['pectorales', 'deltoides', 'biceps', 'triceps', 'antebrazos', 'abdominales', 'oblicuos', 'trapecio',
   'dorsales', 'lumbares', 'gluteos', 'cuadriceps', 'isquiotibiales', 'gemelos'];
 export const OBJETIVOS = ['fuerza', 'hipertrofia', 'resistencia', 'perdida-grasa'];
@@ -22,12 +27,15 @@ export const COLECCIONES = {
       // Datos editables desde "Editar perfil" (opcionales).
       telefono: { bsonType: 'string', pattern: '^\\+?[0-9 ]{7,20}$' },
       objetivo: { enum: OBJETIVOS },
-      // Foto de perfil: el archivo vive en GridFS (bucket `fotos`); aquí solo su referencia.
+      // Foto de perfil: el archivo vive en GridFS (bucket `fotos`) con nombre UUID; aquí su referencia y su SHA-256.
+      // `nombre` y `sha256` son opcionales solo para fotos subidas antes de esta fase (asegurarEsquema las completa).
       foto: objeto(['archivoId', 'url', 'tipo', 'tamano', 'subidaAt'], {
         archivoId: { bsonType: 'objectId' },
         url: texto(1, 200),
         tipo: { enum: TIPOS_FOTO },
         tamano: entero(1, MAX_FOTO),
+        nombre: { bsonType: 'string', pattern: `^${UUID}\\.(jpg|png|webp)$` },
+        sha256: SHA256,
         subidaAt: fecha,
       }),
       createdAt: fecha,
@@ -199,6 +207,34 @@ export const COLECCIONES = {
       [{ referencia: 1 }, { unique: true, name: 'referencia_unica' }],
     ],
   },
+  // Persistencia dual: metadatos de los ficheros (comprobantes PDF en disco, fotos de perfil en GridFS).
+  archivos: {
+    schema: objeto(['nombre', 'titulo', 'tipo', 'peso', 'ruta', 'almacen', 'fecha', 'autor', 'modulo', 'operacion', 'sha256'], {
+      // Nombre real del fichero: siempre un UUID v4, nunca el nombre que envía el usuario.
+      nombre: { bsonType: 'string', pattern: `^${UUID}\\.(pdf|jpg|png|webp)$` },
+      // Nombre legible para descargarlo (p. ej. "Comprobante GF-1A2B3C4D5E.pdf").
+      titulo: texto(1, 120),
+      tipo: { enum: ['application/pdf', ...TIPOS_FOTO] },
+      peso: entero(1, 10 * 1024 * 1024),
+      // Relativa a la raíz de almacenamiento (disco) o "fotos/<id>" (GridFS). Nunca una ruta absoluta.
+      ruta: { bsonType: 'string', maxLength: 200, pattern: '^(comprobantes/' + UUID + '\\.pdf|fotos/[a-f0-9]{24})$' },
+      almacen: { enum: ['disco', 'gridfs'] },
+      fecha,
+      autor: { bsonType: 'objectId' },
+      modulo: { enum: ['membresias', 'reservas', 'pedidos', 'perfil'] },
+      // Identificador de la operación que originó el archivo: referencia del pago o pedido, id de la cita o de la foto.
+      operacion: texto(1, 80),
+      sha256: SHA256,
+      // Datos con los que se dibujó el comprobante: permiten regenerarlo idéntico si el fichero se pierde.
+      datos: { bsonType: 'object' },
+    }),
+    indices: [
+      // Un solo archivo por operación: una compra repetida o dos peticiones simultáneas no generan duplicados.
+      [{ modulo: 1, operacion: 1 }, { unique: true, name: 'archivo_por_operacion' }],
+      [{ autor: 1, fecha: -1 }, { name: 'archivos_por_autor' }],
+      [{ nombre: 1 }, { unique: true, name: 'nombre_uuid_unico' }],
+    ],
+  },
   maquinas: {
     schema: objeto(['_id', 'area', 'nombre', 'ejercicio', 'descripcion', 'pasos', 'musculos'], {
       _id: slug,
@@ -229,4 +265,35 @@ export async function asegurarEsquema(db) {
   // GridFS administra sus colecciones e índices internos. Este índice permite buscar las fotos de un usuario.
   // No es único: al reemplazar una foto se guarda primero la nueva y después se elimina la anterior.
   await db.collection('fotos.files').createIndex({ 'metadata.usuarioId': 1 }, { name: 'fotos_por_usuario' });
+  await migrarFotos(db);
+}
+
+// Migración: fotos de perfil subidas antes de la persistencia dual (sin nombre UUID ni SHA-256).
+// Calcula su hash, renombra el fichero de GridFS con un UUID y registra sus metadatos en `archivos`.
+export async function migrarFotos(db) {
+  const usuarios = db.collection('usuarios');
+  const bucket = new GridFSBucket(db, { bucketName: 'fotos' });
+  const pendientes = await usuarios.find({ foto: { $exists: true }, 'foto.sha256': { $exists: false } }, { projection: { foto: 1 } }).toArray();
+  for (const { _id: autor, foto } of pendientes) {
+    const partes = [];
+    try {
+      for await (const parte of bucket.openDownloadStream(foto.archivoId)) partes.push(parte);
+    } catch {
+      continue; // el fichero ya no existe: no hay nada que migrar
+    }
+    const contenido = Buffer.concat(partes);
+    const huella = createHash('sha256').update(contenido).digest('hex');
+    const nombre = `${randomUUID()}.${EXTENSION_FOTO[foto.tipo]}`;
+    await bucket.rename(foto.archivoId, nombre);
+    await db.collection('archivos').updateOne(
+      { modulo: 'perfil', operacion: `foto-${foto.archivoId}` },
+      { $set: {
+        nombre, titulo: `Foto de perfil.${EXTENSION_FOTO[foto.tipo]}`, tipo: foto.tipo, peso: contenido.length,
+        ruta: `fotos/${foto.archivoId}`, almacen: 'gridfs', fecha: foto.subidaAt, autor, sha256: huella,
+      } },
+      { upsert: true },
+    );
+    await db.collection('fotos.files').updateOne({ _id: foto.archivoId }, { $set: { 'metadata.sha256': huella } });
+    await usuarios.updateOne({ _id: autor, 'foto.archivoId': foto.archivoId }, { $set: { 'foto.nombre': nombre, 'foto.sha256': huella } });
+  }
 }

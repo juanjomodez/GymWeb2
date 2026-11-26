@@ -23,6 +23,6 @@ npm test
 
 ## Resultado
 
-32 pruebas, 32 pasan, 0 fallan.
+34 pruebas, 34 pasan, 0 fallan.
 
-![Resultado de npm test](img/npm-test-semana13.png)
+![Resultado de npm test](npm-test.png)
