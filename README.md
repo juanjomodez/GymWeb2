@@ -75,13 +75,14 @@ que la aplicación puede leer los datos. Los tres endpoints deben devolver HTTP 
 [Contrato de la API](docs/API.md) · [Diagrama ER](docs/diagrama-er.md) ·
 [Guía del backend](backend/README.md)
 
-## Enlace Web
+## Enlace web
 
-Para acceder desde el navegador se puede al entrar justamente al enlace de render: https://gymflow-2rkj.onrender.com/
+La aplicación está desplegada en Render: https://gymflow-2rkj.onrender.com/
 
 ## Demo final
 
-En la carpeta "Video Final" aparece un documento, en el cual esta el enlace a la demo final que grabamos, no se puede subir directamente al github al pesar mas de 100mb que es el limite, el link es : https://youtu.be/1G9ILpiRnl0?si=2zOTZtSJxKHgWGuV
+El video de la demo final está en YouTube: https://youtu.be/1G9ILpiRnl0
+No se subió al repositorio porque pesa más de 100 MB, el límite de GitHub. La carpeta "Video Final" tiene un documento con el mismo enlace.
 
 
 ## Descripción del proyecto
