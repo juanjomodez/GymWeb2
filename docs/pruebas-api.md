@@ -25,4 +25,4 @@ npm test
 
 34 pruebas, 34 pasan, 0 fallan.
 
-![Resultado de npm test](docs/npm-test.png)
+![Resultado de npm test](npm-test.png)
