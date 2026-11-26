@@ -1,7 +1,6 @@
 # Diagrama ER de GymFlow
 
-Las once colecciones de aplicación se definen en [esquema.js](../backend/src/esquema.js).
-GridFS guarda los archivos de fotos en dos colecciones adicionales.
+El esquema integrado en `main` define doce colecciones de aplicación, incluida `archivos`. GridFS usa dos colecciones adicionales para almacenar las fotos de perfil. [Ver esquema de MongoDB](https://github.com/juanjomodez/GymWeb2/blob/main/backend/src/esquema.js)
 
 ```mermaid
 erDiagram
@@ -15,6 +14,11 @@ erDiagram
     carritos }o--o{ productos : "items[].productoId"
     pedidos }o--o{ productos : "items[].productoId"
     rutinas }o--o{ maquinas : "ejercicios[].maquinaId"
+    usuarios ||--o{ archivos : autor
+    membresias o|--o{ archivos : "pagos[].referencia"
+    reservas o|--o| archivos : "_id como texto"
+    pedidos o|--o| archivos : referencia
+    archivos o|--o| FOTOS_FILES : "ruta de la foto"
     usuarios ||--o{ FOTOS_FILES : "metadata.usuarioId"
     usuarios o|--o| FOTOS_FILES : "foto.archivoId"
     FOTOS_FILES ||--o{ FOTOS_CHUNKS : files_id
@@ -93,7 +97,22 @@ erDiagram
         string referencia UK
         string estado
     }
-    FOTOS_FILES["fotos.files (archivos)"] {
+    archivos {
+        objectId _id PK
+        string nombre UK "UUID con extensión"
+        string titulo
+        string tipo "MIME"
+        int peso "bytes"
+        string ruta "relativa al almacenamiento"
+        string almacen "disco o gridfs"
+        date fecha
+        objectId autor FK
+        string modulo "membresias, reservas, pedidos o perfil"
+        string operacion
+        string sha256
+        object datos "opcional, para regenerar el PDF"
+    }
+    FOTOS_FILES["fotos.files"] {
         objectId _id PK
         object metadata "usuarioId y tipo"
         string filename
@@ -114,3 +133,11 @@ Las rutinas guardan los ejercicios dentro del documento y los pedidos
 conservan el nombre y precio de los productos al comprar. Una foto vigente
 se identifica mediante `usuarios.foto.archivoId`. GridFS registra el dueño
 en `fotos.files.metadata.usuarioId`.
+
+`archivos` registra los metadatos de los comprobantes en PDF y las fotos de
+perfil. Los PDF se guardan en disco y las fotos en GridFS. El par
+`(modulo, operacion)` es único y limita a un archivo por operación. En
+membresías, `operacion` es la referencia de cada pago. En reservas, es el
+`_id` convertido a texto. En pedidos, es la referencia del pedido. Para
+una foto de perfil, `ruta` tiene la forma `fotos/<id>` y apunta a
+`fotos.files._id`.
