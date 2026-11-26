@@ -75,6 +75,11 @@ que la aplicación puede leer los datos. Los tres endpoints deben devolver HTTP 
 [Contrato de la API](docs/API.md) · [Diagrama ER](docs/diagrama-er.md) ·
 [Guía del backend](backend/README.md)
 
+## Demo final
+
+En la carpeta "Video Final" aparece un documento, en el cual esta el enlace a la demo final que grabamos, no se puede subir directamente al github al pesar mas de 100mb que es el limite, el link es : https://youtu.be/1G9ILpiRnl0?si=2zOTZtSJxKHgWGuV
+
+
 ## Descripción del proyecto
 
 Nombre del proyecto: Gym Flow
